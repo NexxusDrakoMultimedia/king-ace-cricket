@@ -1,23 +1,23 @@
 # King and Ace Cricket
-King and Ace Cricket is a card game invented by Vyktory Knight.
 
+A cricket card game played with a standard 52-card deck, invented by Pyra Drake. Two teams play a full simulated cricket match with hidden hands and simultaneous card reveals, or you can play a solo mode that simulates a batting innings.
 
 ## Rules
-This game is played with a standard 52 card deck, either solo as a simulation, or a two-player game where two teams compete against each other in a simulated cricket match.
 
-A coin flip decides who bats or bowls first and play begins by drawing six cards. The aim is to play a card that's higher than your opponents.
+The full rules are in [rules.md](rules.md). In short:
 
-If the bowler's card is higher, a dot ball or a wicket happens. If the batter's card is higher, the batter scores that many runs or causes a wicket. Otherwise if tied, there is an automatic dot ball.
+- Each over is six balls, and each side holds a hand of six cards, playing one per ball.
+- The higher card wins (Ace low). A batter win scores runs by card value, and a bowler win or tie is a dot ball.
+- A King is a wicket whoever plays it, unless the other card is a Jack, Queen or King.
+- A solo mode simulates a batting innings from the cards alone.
 
-The innings ends after a predetermined amount of overs, or ten wickets, then the players change sides. Standard cricket scoring rules decide who wins. A standard cricket scoresheet can be used to score the game.
+## Web app
 
-The card values are Ace to 4 scoring one run, 5 to 7 scoring two runs, 8 scoring three, 9 to 10 scoring a four, Jack and Queen scoring a six, and finally, a King being a wicket, no matter who plays it. You should shuffle after every 2 hands.
+A browser version is planned and not built yet. The goal is to play the game in the browser:
 
-There is also a solo mode which just simulates a game, where you only play the batting side which has been tested to be reasonably accurate to 20/20 cricket if you shuffle after every 4 overs. The scoring for this is Ace to 3 scoring dots, 4-6 scoring one run, 7 & 8 scoring two runs, 9 scoring three runs, 10 and Jack scoring four runs, Queen scoring six runs, and King being a wicket.
-
-# Disclaimer
-
-I must note that other people have probably created similar rules, and I do not claim to have invented the game, merely designed this particular variant. I made a mockup of the solo game in 2007 using GameMaker 7 and distributed that version amongst friends and family, and this ruleset is based on an evolution of said mockup.
+1. **Solo mode:** a T20-style batting simulator with a scorecard.
+2. **Two-player, hot-seat:** two players on one device, each choosing a card per ball in secret.
+3. **Online play:** shared match links, if there is demand.
 
 ## License
 
