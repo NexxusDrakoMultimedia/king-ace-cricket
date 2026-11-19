@@ -26,4 +26,4 @@ First public release (planned as 0.1.0).
 
 ### Changed
 - The web app follows the Nexxus Drako Multimedia design system, with its Orbitron and Exo 2 fonts self-hosted so loading the page makes no request to Google.
-- Code and the web app are GPL-3.0-or-later; the rules stay CC0.
+- Code and the web app are GPL-3.0-or-later; the rules stay CC0. The copyright holder is Nexxus Drako Multimedia.

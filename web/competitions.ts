@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 Pyra Drake
+// SPDX-FileCopyrightText: 2026 Nexxus Drako Multimedia
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { champion, championTeams, createCompetition, isComplete, nextFixture, simulateAll, simulateNext, simulateRound } from "../src/competition.ts";

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 Pyra Drake
+// SPDX-FileCopyrightText: 2026 Nexxus Drako Multimedia
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // Loads the real built page (dist/) in a simulated browser and clicks through it.

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 Pyra Drake
+// SPDX-FileCopyrightText: 2026 Nexxus Drako Multimedia
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // Tests the cookie banner and what loads when, using two real builds of the page: one

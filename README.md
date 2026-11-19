@@ -73,6 +73,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md), the [Code of Conduct](CODE_OF_CONDUCT.md
 
 ## License
 
+Copyright © 2026 Nexxus Drako Multimedia.
+
 - **The game and its rules** ([rules.md](rules.md)) are released under Creative Commons Zero ([LICENSE-RULES](LICENSE-RULES)). Use them for anything.
 - **The code and web app** are free software under the GNU General Public License, version 3 or later ([LICENSE](LICENSE)). The GameAnalytics SDK it can load is MIT licensed.
 - **The fonts** (Orbitron and Exo 2, in `web/fonts/`) are licensed under the SIL Open Font License 1.1, with their licence texts alongside. The Nexxus Drako Multimedia design tokens and brand come from the [design system](https://github.com/NexxusDrakoMultimedia/design-system).
