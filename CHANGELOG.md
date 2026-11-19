@@ -21,6 +21,9 @@ First public release (planned as 0.1.0).
 - **Google Analytics and GameAnalytics**, only if configured at build time and only after a visitor consents, with a cookie banner, settings, Global Privacy Control support, and [PRIVACY.md](PRIVACY.md).
 - Project files: agent guide, contributing guide, code of conduct, security policy, contributors list, privacy page and release process.
 
+### Fixed
+- `wrangler deploy` builds the site itself if the host's build command was left blank, instead of failing on a missing `dist/` folder.
+
 ### Changed
 - The web app follows the Nexxus Drako Multimedia design system, with its Orbitron and Exo 2 fonts self-hosted so loading the page makes no request to Google.
 - Code and the web app are GPL-3.0-or-later; the rules stay CC0.

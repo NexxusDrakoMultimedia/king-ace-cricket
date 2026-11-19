@@ -44,7 +44,7 @@ GameAnalytics' web SDK needs both keys inside the page, so although the secret k
 The site deploys to Cloudflare Workers as static assets (see [wrangler.jsonc](wrangler.jsonc)), with `kac.nexxusdrako.au` attached as a custom domain. Cloudflare's **Workers Builds** does the build and deploy on every push to `master`:
 
 - **Worker name:** `king-ace-cricket` (it must match `wrangler.jsonc`)
-- **Build command:** `npm run build`
+- **Build command:** `npm run build`. **This must be set**, because it is the step that gets your analytics variables into the site. If it is left blank the deploy still works, since `wrangler deploy` builds the site when nothing has, but the build log won't show your variables being used.
 - **Deploy command:** `npx wrangler deploy`
 - **Build variables and secrets** (Settings, Build): the three variables above. Add the GameAnalytics secret as a secret.
 

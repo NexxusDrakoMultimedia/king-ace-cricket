@@ -4,6 +4,11 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "king-ace-cricket",
   "compatibility_date": "2025-09-01",
+  // Builds the site first if nothing has (a safety net; the host should run `npm run build`
+  // itself, which this then leaves alone). See scripts/build-if-needed.mjs.
+  "build": {
+    "command": "node scripts/build-if-needed.mjs"
+  },
   "assets": {
     "directory": "./dist"
   },
