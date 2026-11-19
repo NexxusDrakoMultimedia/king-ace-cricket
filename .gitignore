@@ -1,0 +1,7 @@
+node_modules/
+dist/
+dist-analytics/
+dist-analytics-off/
+dist-analytics-bad/
+dist-test-smoke/
+dist-test-views/

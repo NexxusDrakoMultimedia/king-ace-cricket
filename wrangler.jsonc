@@ -1,0 +1,13 @@
+{
+  // Cloudflare Workers static assets: serves the built site from ./dist (see scripts/build.mjs).
+  // Deploy with `npm run deploy` after logging in with `npx wrangler login`.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "king-ace-cricket",
+  "compatibility_date": "2025-09-01",
+  "assets": {
+    "directory": "./dist"
+  },
+  // Attaches kac.nexxusdrako.au to this Worker and creates its DNS record on deploy.
+  // Requires the nexxusdrako.au zone to be on the same Cloudflare account.
+  "routes": [{ "pattern": "kac.nexxusdrako.au", "custom_domain": true }]
+}

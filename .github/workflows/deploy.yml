@@ -1,0 +1,65 @@
+name: Test
+
+# Tests run on every push and pull request.
+#
+# Deploying is done by Cloudflare Workers Builds, which builds the site with the
+# analytics keys you set there as build variables and secrets, then runs
+# `npx wrangler deploy`. That is deliberate: a build made here would not have those
+# keys, and deploying it would replace the live site with one that has no analytics.
+#
+# To deploy from GitHub Actions instead, turn Workers Builds off, set the repository
+# variable DEPLOY_FROM_ACTIONS to "true", and add the same settings as repository
+# variables (KAC_GA_ID, KAC_GAMEANALYTICS_KEY) and secret (KAC_GAMEANALYTICS_SECRET),
+# plus the secrets CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  deploy:
+    # Off unless you opt in (see the note at the top).
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master' && vars.DEPLOY_FROM_ACTIONS == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    concurrency:
+      group: deploy
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+        env:
+          KAC_GA_ID: ${{ vars.KAC_GA_ID }}
+          KAC_GAMEANALYTICS_KEY: ${{ vars.KAC_GAMEANALYTICS_KEY }}
+          KAC_GAMEANALYTICS_SECRET: ${{ secrets.KAC_GAMEANALYTICS_SECRET }}
+      # Publishes dist/ as a Cloudflare Worker with static assets and attaches
+      # kac.nexxusdrako.au (see wrangler.jsonc).
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy

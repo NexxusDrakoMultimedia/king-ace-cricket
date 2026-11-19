@@ -1,0 +1,59 @@
+# Agent guide
+
+Instructions for AI coding agents (and a fast orientation for humans) working in this repository. `CLAUDE.md` points here.
+
+## What this is
+
+King and Ace Cricket is a cricket card game by Pyra Drake. This repo holds the rules ([rules.md](rules.md)), a TypeScript rules engine and simulator (`src/`), and a static web app (`web/`) that plays solo innings, leagues, cups, tiered league systems and eSports-style events on a paper scorebook. It deploys to `kac.nexxusdrako.au` on Cloudflare Workers (static assets).
+
+## Commands
+
+```sh
+npm ci                 # install exactly what the lockfile says
+npm run typecheck      # tsc --noEmit (strict)
+npm test               # unit tests + a simulated-browser smoke test of the built page
+npm run dev            # build and serve on http://localhost:8080
+npm run build          # production build into dist/
+npm run sim            # print simulation statistics
+```
+
+Run `npm run typecheck && npm test` before you finish any change. CI runs the same two commands. Cloudflare Workers Builds deploys `master`; GitHub Actions does not deploy.
+
+Do not run `npm ci --dry-run`: on npm 9 it deletes `node_modules`.
+
+## Layout
+
+- `src/rules.ts`, `cards.ts`, `innings.ts`: the game itself. Pure, deterministic, no I/O.
+- `src/teamMatch.ts`, `competition.ts`, `leagueSystem.ts`: team matches, leagues, cups, series, tiered systems with promotion and relegation.
+- `src/ratings.ts`, `profiles.ts`, `commentary.ts`: Elo/Glicko, player/team/competition profiles and honours, broadcast commentary.
+- `src/consent.ts`, `analyticsEvents.ts`: cookie consent rules and the fixed analytics events. `web/analytics.ts` loads Google Analytics and GameAnalytics.
+- `src/match.ts`, `storage.ts`, `exchange.ts`, `names.ts`: saved matches, browser storage, export/import, name generators.
+- `src/scorebook.ts`: turns a ball-by-ball log into the scorebook model.
+- `web/`: the page. `scripts/build.mjs`: the build. `test/`: tests.
+
+## Rules for changes
+
+1. **Determinism.** Everything is replayable from a seed. Never call `Math.random` or `Date.now` inside game logic; take an `Rng` or a `now` argument. Competitions store results only and regenerate scorecards from seeds, so changing what a seed plays out breaks saved data: bump `RULES_VERSION` in `src/teamMatch.ts` when you must.
+2. **Untrusted data.** Saved data and imported files are untrusted. Every shape that can come from storage or a file has a `parse*` validator; add one for any new shape, and make it reject rather than trust.
+3. **No injection.** Team and player names are user input. Escape with `esc()` in `web/render.ts` whenever you build HTML, never assign names to `innerHTML` raw, and keep the Content-Security-Policy in `web/_headers` (no inline scripts or styles).
+4. **Tests.** Add tests with the change. Prefer checking properties (totals add up, replays match) over exact snapshots. If you change a rule, update `rules.md` and the tests in the same change.
+5. **Versions.** Releases follow Semantic Versioning (see `RELEASING.md`); the rules and the saved-data format are what the number promises. Add a line under `## [Unreleased]` in `CHANGELOG.md` for any change a user would notice. Data keeps a `version: 1` format marker so incompatible files are rejected safely; there are no migrations before 1.0.0. The site itself deploys from `master`.
+6. **Analytics and consent.** Nothing from Google Analytics or GameAnalytics may load, run, or store anything before a visitor says yes, and withdrawing must switch it off and clear what it stored. Events are built only from the fixed shapes in `src/analyticsEvents.ts`: never put a name, seed, or any free text in one. Keys come from build variables, never from the repository. Don't weaken the Content-Security-Policy; it only names a provider's domains when that provider is configured. Tests must never touch the real network.
+7. **Licences.** Code is GPL-3.0-or-later: new source files start with the two-line SPDX header used elsewhere. The rules and game design are CC0.
+
+## Brand and design system
+
+User-facing copy and styling follow the Nexxus Drako Multimedia design system at <https://github.com/NexxusDrakoMultimedia/design-system>. Read its README and `values.md` before changing the look or the wording.
+
+- Voice: first person, warm and direct, Australian English (colour, organise), uppercase display lines, sentence-case running text, no emoji as decoration. "Cryptid", never "gremlin".
+- Colour: maroon and gold only, plus black and white. Dark is the primary theme. Never gold text on white. Status colours are colour-blind safe and always carry an icon and a word.
+- Type: Orbitron for display, Exo 2 for body, both self-hosted in `web/fonts/` (SIL OFL, licences included) rather than loaded from Google Fonts, so loading the page makes no third-party request. Flat colour: no gradients or drop shadows.
+- Icons come from the brand icon set. Never emoji.
+- The Acknowledgement of Country and the queer-by-design statement appear on the page using the exact wording in `values.md`. Do not paraphrase them. Do not redraw the pride flag; use the official artwork only.
+- Pyra Drake is the lead commentator. Commentary is generated text in that voice, not a recording.
+
+## Working here
+
+- There is usually no browser in the agent environment. The smoke test (`test/smoke.test.mjs`) loads the built page in jsdom and clicks through it, but it cannot judge appearance: say so rather than claiming the UI looks right.
+- Never deploy, push or change repository settings unless asked. Pushing to `master` deploys the live site.
+- Keep changes small and the diff reviewable. Don't reformat files you are not changing.

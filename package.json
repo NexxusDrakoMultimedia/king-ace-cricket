@@ -1,0 +1,28 @@
+{
+  "name": "king-ace-cricket",
+  "private": true,
+  "type": "module",
+  "description": "Rules engine, simulator and web app for King and Ace Cricket, a cricket card game.",
+  "scripts": {
+    "test": "tsx --test test/*.test.*",
+    "sim": "tsx src/sim.ts",
+    "build": "node scripts/build.mjs",
+    "dev": "node scripts/build.mjs --serve",
+    "typecheck": "tsc --noEmit",
+    "deploy": "npm run build && wrangler deploy",
+    "preview": "npm run build && wrangler dev"
+  },
+  "license": "GPL-3.0-or-later",
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "esbuild": "^0.28.2",
+    "jsdom": "^31.0.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "wrangler": "^4.165.0"
+  },
+  "dependencies": {
+    "gameanalytics": "^5.0.0"
+  },
+  "version": "0.0.0"
+}
