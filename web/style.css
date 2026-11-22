@@ -359,3 +359,9 @@ ol.players { margin: 0; padding-left: var(--space-6); display: grid; gap: var(--
 .rchip.T { color: var(--warning); border-color: var(--warning); }
 .tbl td small { display: block; }
 .tbl td.winner { font-weight: 700; color: var(--accent); }
+
+/* On a phone, keep chart labels readable: charts keep a minimum width and scroll sideways inside their figure. */
+@media (max-width: 640px) {
+  .figure { overflow-x: auto; }
+  .chart:not(.fixed):not(.square) { min-width: 560px; }
+}
