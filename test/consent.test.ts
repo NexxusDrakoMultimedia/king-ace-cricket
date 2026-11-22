@@ -67,7 +67,7 @@ test("stored consent is validated, and anything odd means no choice", () => {
 
 const samples: AppEvent[] = [
   { name: "app_open" }, { name: "view", view: "comps" }, { name: "solo_started" },
-  { name: "versus_started" }, { name: "competition_created", kind: "event", teams: "5-8", strength: true },
+  { name: "versus_started" }, { name: "competition_created", kind: "major", teams: "5-8", strength: true },
   { name: "competition_completed", kind: "cup" }, { name: "broadcast_started" }, { name: "data_exported", kind: "backup" },
   { name: "data_imported" }, { name: "data_cleared" },
 ];
@@ -91,8 +91,9 @@ test("events cannot carry free text: bad shapes are dropped", () => {
 test("team counts are bucketed and event kinds derived", () => {
   assert.deepEqual([2, 4, 5, 8, 9, 16, 17, 64, 65, 1024].map(bucketTeams), ["2-4", "2-4", "5-8", "5-8", "9-16", "9-16", "17-64", "17-64", "65+", "65+"]);
   assert.equal(kindOf("cup", { playoffSpots: 0 }), "cup");
-  assert.equal(kindOf("league", { playoffSpots: 6 }), "event");
+  assert.equal(kindOf("league", { playoffSpots: 6 }), "major");
   assert.equal(kindOf("league", { playoffSpots: 0 }), "league");
+  assert.equal(kindOf("groups", { playoffSpots: 0 }), "worlds");
 });
 
 test("Google Analytics events: GA4 names and flat parameters, a view becomes a page_view", () => {

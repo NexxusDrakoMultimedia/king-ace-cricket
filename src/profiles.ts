@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Nexxus Drako Multimedia
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { champion, isComplete, replayFixture, standings, teamOf } from "./competition.ts";
-import type { Competition, Fixture } from "./competition.ts";
+import { champion, formatOf, isComplete, replayFixture, standings, teamOf } from "./competition.ts";
+import type { Competition, CompetitionKind, Fixture, Format } from "./competition.ts";
 import { playerOfMatch } from "./commentary.ts";
 import type { Team } from "./match.ts";
 import { buildScorebook } from "./scorebook.ts";
@@ -89,7 +89,9 @@ export interface Leader {
 export interface CompetitionRecord {
   id: string;
   name: string;
-  kind: "league" | "cup";
+  kind: CompetitionKind;
+  /** League, Cup, Major or Worlds. */
+  format: Format;
   complete: boolean;
   matches: number;
   championId: string | null;
@@ -187,6 +189,10 @@ function leaders(stats: CompStats, pick: (s: BatStats) => number, teamName: (id:
     .slice(0, n);
 }
 
+const WIN_TITLE: Record<Format, string> = {
+  League: "League champions", Cup: "Cup winners", Major: "Major champions", Worlds: "World champions",
+};
+
 /** Builds profiles for all teams, players and competitions, oldest competition first. */
 export function buildProfiles(comps: readonly Competition[]): Profiles {
   const teams = new Map<string, TeamRecord>();
@@ -266,7 +272,7 @@ export function buildProfiles(comps: readonly Competition[]): Profiles {
     const champId = done ? champion(comp) : null;
     const second = runnerUp(comp);
     competitions.set(comp.id, {
-      id: comp.id, name: comp.name, kind: comp.kind, complete: done, matches: cs.games.length,
+      id: comp.id, name: comp.name, kind: comp.kind, format: formatOf(comp), complete: done, matches: cs.games.length,
       championId: champId, runnerUpId: second,
       topRuns: leaders(cs, (s) => s.runs, nameOf), topSixes: leaders(cs, (s) => s.sixes, nameOf),
       highestTotal: cs.highest, biggestWin: cs.biggestWin,
@@ -274,7 +280,7 @@ export function buildProfiles(comps: readonly Competition[]): Profiles {
 
     if (!done) continue;
     const src = comp.name;
-    const winTitle = comp.kind === "cup" ? "Cup winners" : "League champions";
+    const winTitle = WIN_TITLE[formatOf(comp)];
     if (champId) honour(champId, { kind: "champion", title: winTitle, source: src, competitionId: comp.id });
     if (second) honour(second, { kind: "runner-up", title: "Runners-up", source: src, competitionId: comp.id });
     const top = leaders(cs, (s) => s.runs, nameOf, 1)[0];

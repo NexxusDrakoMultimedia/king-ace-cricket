@@ -1,6 +1,6 @@
 # King and Ace Cricket
 
-A cricket card game played with a standard 52-card deck, invented by Pyra Drake. This repository holds the rules, a TypeScript rules engine and simulator, and a web app for playing solo innings, one-off matches, leagues, cups and eSports-style events on a paper scorebook.
+A cricket card game played with a standard 52-card deck, invented by Pyra Drake. This repository holds the rules, a TypeScript rules engine and simulator, and a web app for playing solo innings, one-off matches, leagues, cups, Majors and Worlds on a paper scorebook.
 
 ## Rules
 
@@ -17,7 +17,11 @@ A static site with no server, live at `kac.nexxusdrako.au`.
 
 - **Solo:** a paper-style scorebook with strike rotation, fall of wickets, a struck-through runs ladder and over-by-over grid. Bat a single innings, or play a one-off 1v1 match against another of your teams. Play a ball, an over or the whole innings.
 - **Bowling cards:** in any match between two teams, the fielding side's numbers 11 to 7 bowl in turn, from the bottom of the order up, with overs, maidens, runs, wickets and economy, and each wicket credited to its bowler.
-- **Competitions:** leagues (up to 16 teams), cups (up to 1,024 teams, a random draw or seeded by rating or strength, "Round of 64" down to the final) and events (a league stage, then playoffs for any number of teams, seeded by the table with byes for the top seeds, and best-of-3 and best-of-5 series). Pick from your own teams, or put champions against each other.
+- **Competitions**, in four formats. Pick from your own teams, or put champions against each other:
+  - **League:** everyone plays everyone, up to 16 teams.
+  - **Cup:** a knockout of up to 1,024 teams, drawn at random or seeded by rating or strength, "Round of 64" down to the final.
+  - **Major:** a league stage, then playoffs for any number of teams, seeded by the table with byes for the top seeds, and best-of-3 and best-of-5 series.
+  - **Worlds:** World Cup-style groups of any size drawn from seeding pots, then the top of each group in a seeded knockout, with group-mates kept apart in its first round.
 - **Broadcast:** watch any match with Pyra Drake as lead commentator, a stats desk, key-moment pop-ups and Player of the Match. Commentary is generated, not recorded.
 - **Ratings and records:** Elo and Glicko ratings, and profiles with honours for every team, player and competition.
 - **Teams:** you start with Alpha XI (Alpha One to Alpha Eleven) and Omega XI (Omega One to Omega Eleven). Name all eleven players yourself, or generate teams from the major cricket-playing regions. Optional team strength gives a team redraws of a King.

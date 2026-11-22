@@ -4,7 +4,7 @@ Instructions for AI coding agents (and a fast orientation for humans) working in
 
 ## What this is
 
-King and Ace Cricket is a cricket card game by Pyra Drake. This repo holds the rules ([rules.md](rules.md)), a TypeScript rules engine and simulator (`src/`), and a static web app (`web/`) that plays solo innings, one-off matches, leagues, cups and eSports-style events on a paper scorebook. It deploys to `kac.nexxusdrako.au` on Cloudflare Workers (static assets).
+King and Ace Cricket is a cricket card game by Pyra Drake. This repo holds the rules ([rules.md](rules.md)), a TypeScript rules engine and simulator (`src/`), and a static web app (`web/`) that plays solo innings, one-off matches, leagues, cups, Majors and Worlds on a paper scorebook. It deploys to `kac.nexxusdrako.au` on Cloudflare Workers (static assets).
 
 ## Commands
 
@@ -24,7 +24,7 @@ Do not run `npm ci --dry-run`: on npm 9 it deletes `node_modules`.
 ## Layout
 
 - `src/rules.ts`, `cards.ts`, `innings.ts`: the game itself. Pure, deterministic, no I/O.
-- `src/teamMatch.ts`, `competition.ts`: team matches, leagues, cups, series, and league playoffs (any number of spots, seeded, with byes).
+- `src/teamMatch.ts`, `competition.ts`: team matches and the four competition formats: League, Cup, Major (league + seeded playoffs, any number of spots, with byes) and Worlds (`kind: "groups"`: groups drawn from pots, then a knockout).
 - `src/ratings.ts`, `profiles.ts`, `commentary.ts`: Elo/Glicko, player/team/competition profiles and honours, broadcast commentary.
 - `src/consent.ts`, `analyticsEvents.ts`: cookie consent rules and the fixed analytics events. `web/analytics.ts` loads Google Analytics and GameAnalytics.
 - `src/match.ts`, `storage.ts`, `exchange.ts`, `names.ts`: saved matches, browser storage, export/import, name generators.

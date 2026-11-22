@@ -157,3 +157,15 @@ test("Player of the Match is the winner's top scorer, or the best on the day if 
   assert.equal(potm.runs, Math.max(...pool.map((x) => x.runs)));
   assert.equal(playerOfMatch([], null), null);
 });
+
+test("honours are named for the format: Major and World champions", () => {
+  const major = createCompetition({ name: "M", kind: "league", teams: teams(6, 3), seed: 2, now: NOW, settings: { playoffSpots: 4 } });
+  const world = createCompetition({ name: "W", kind: "groups", teams: teams(8, 4), seed: 3, now: NOW, settings: { groupSize: 4, groupAdvance: 2 } });
+  simulateAll(major, NOW);
+  simulateAll(world, NOW);
+  const p = buildProfiles([major, world]);
+  assert.equal(p.competitions.get(major.id)!.format, "Major");
+  assert.equal(p.competitions.get(world.id)!.format, "Worlds");
+  assert.ok(p.teams.get(champion(major)!)!.honours.some((h) => h.title === "Major champions"));
+  assert.ok(p.teams.get(champion(world)!)!.honours.some((h) => h.title === "World champions"));
+});

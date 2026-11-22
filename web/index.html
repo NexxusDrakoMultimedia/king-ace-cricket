@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>King and Ace Cricket</title>
-  <meta name="description" content="A cricket card game by Pyra Drake. Play solo innings, one-off matches, leagues, cups and eSports-style events on a paper scorebook.">
+  <meta name="description" content="A cricket card game by Pyra Drake. Play solo innings, one-off matches, leagues, cups, Majors and Worlds on a paper scorebook.">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%237f0000'/%3E%3Ctext x='32' y='47' font-size='40' text-anchor='middle' font-family='sans-serif' font-weight='700' fill='%23ffd900'%3EK%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="fonts.css">
   <link rel="stylesheet" href="tokens.css">
@@ -147,7 +147,8 @@
       <label>Format <select id="compKind">
         <option value="league">League: everyone plays everyone (up to 16 teams)</option>
         <option value="cup">Cup: knockout, any number of teams</option>
-        <option value="event">Event: league stage, then seeded playoffs and a grand final</option>
+        <option value="major">Major: league stage, then seeded playoffs and a grand final</option>
+        <option value="worlds">Worlds: groups, then the top of each group in a knockout</option>
       </select></label>
       <fieldset>
         <legend>Teams</legend>
@@ -164,7 +165,7 @@
             <option value="rating">By Elo rating</option>
             <option value="strength">By team strength</option>
           </select></label>
-          <p class="hint">Seeds 1 and 2 can only meet in the final. If the number of teams isn't a power of 2 (4, 8, 16 and so on), the top seeds get byes into the second round.</p>
+          <p class="hint">Cup: seeds 1 and 2 can only meet in the final, and if the number of teams isn't a power of 2 (4, 8, 16 and so on) the top seeds get byes into the second round. Worlds: the seeds are split into pots, one team per group from each pot, so the top seeds land in different groups.</p>
         </div>
       </fieldset>
       <fieldset>
@@ -176,11 +177,18 @@
         <label class="check"><input type="checkbox" id="compStrength"> Team strength changes the odds</label>
         <p class="hint" id="compStrengthHint">Off: every team is equal and results are pure luck. On: each point of strength is a redraw of a King per innings. A 5 beats a 0 about three games in four.</p>
         <div id="compLeagueOpts">
-          <div class="inline">
-            <label>League games <select id="compRounds"><option value="1">Everyone plays once</option><option value="2">Home and away</option></select></label>
+          <label>League games <select id="compRounds"><option value="1">Everyone plays once</option><option value="2">Home and away</option></select></label>
+          <div id="compPlayoffWrap">
             <label>Playoff spots <input id="compPlayoffs" type="number" min="0" max="16" value="0" inputmode="numeric"></label>
+            <p class="hint">0: no playoffs, the top of the table wins. Otherwise that many teams go from the table into a knockout, seeded by where they finished: the best plays the lowest. Any number from 2 up works; when it isn't 2, 4, 8 or 16 the top seeds get byes.</p>
           </div>
-          <p class="hint">0: no playoffs, the top of the table wins. Otherwise that many teams go from the table into a knockout, seeded by where they finished: the best plays the lowest. Any number from 2 up works; when it isn't 2, 4, 8 or 16 the top seeds get byes.</p>
+          <div id="compGroupOpts" hidden>
+            <div class="inline">
+              <label>Teams per group <input id="compGroupSize" type="number" min="2" max="16" value="4" inputmode="numeric"></label>
+              <label>Through from each group <input id="compGroupAdvance" type="number" min="1" max="16" value="2" inputmode="numeric"></label>
+            </div>
+            <p class="hint">Teams are split into as few groups as fit (some can have one fewer). Each group plays a round robin, and the top of each goes through to a knockout: group winners are seeded first, then runners-up, and teams from the same group are kept apart in the first knockout round where they can be.</p>
+          </div>
         </div>
         <div class="inline">
           <label>Knockout matches <select id="compBestOf"><option value="1">Single match</option><option value="3">Best of 3</option><option value="5">Best of 5</option></select></label>

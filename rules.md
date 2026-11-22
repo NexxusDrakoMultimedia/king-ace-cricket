@@ -69,6 +69,12 @@ The cards alone decide every ball, so the fielding side's bowling is only for th
 
 A league can end in a knockout playoff for any number of its top teams. They are seeded by where they finished in the table, and the bracket is the next size up out of 2, 4, 8 or 16: the top seeds fill the empty places with a bye into the second round. Seeds meet in the standard order (1 plays the lowest seed, and 1 and 2 can only meet in the final).
 
+### Groups (Worlds)
+
+A World Cup-style format: the teams are drawn into groups of a chosen size, the fewest groups that fit (some can have one fewer team). The seeds are split into pots of one team per group, and each group draws one team from each pot, so the strongest teams start in different groups. Each group is a round robin with its own table.
+
+A chosen number from the top of every group go through to a knockout. Every group winner is seeded above every runner-up, and so on; within the same place, teams are ranked on points per game, then net run rate. Byes work as in the playoffs, and two teams from the same group are kept apart in the first knockout round wherever another tie lets them swap.
+
 ## Disclaimer
 
 I must note that other people have probably created similar rules, and I do not claim to have invented the game, merely designed this particular variant. I made a mockup of the solo game in 2007 using GameMaker 7 and distributed that version amongst friends and family, and this ruleset is based on an evolution of said mockup.

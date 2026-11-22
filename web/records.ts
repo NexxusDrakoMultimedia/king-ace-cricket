@@ -77,7 +77,7 @@ function compDetail(c: CompetitionRecord, p: Profiles): string {
     l.length
       ? `<h3>${esc(title)}</h3><table class="tbl"><tbody>${l.map((x) => `<tr><td>${link("players", x.key, x.name)}</td><td>${esc(x.teamName)}</td><td class="num"><b>${x.value}</b></td></tr>`).join("")}</tbody></table>`
       : "";
-  return `<p class="eyebrow"><span class="tag">${c.kind}</span><span class="tag">${c.complete ? "complete" : "in progress"}</span></p><h2>${esc(c.name)}</h2>
+  return `<p class="eyebrow"><span class="tag">${esc(c.format)}</span><span class="tag">${c.complete ? "complete" : "in progress"}</span></p><h2>${esc(c.name)}</h2>
     <div class="statgrid">${stat("Matches", c.matches)}${stat("Champions", c.championId ? p.teams.get(c.championId)?.name ?? "-" : "-")}${stat("Runners-up", c.runnerUpId ? p.teams.get(c.runnerUpId)?.name ?? "-" : "-")}</div>
     ${c.highestTotal ? `<p>Highest total: <b>${c.highestTotal.runs}</b> by ${name(c.highestTotal.teamId)} <small>${esc(c.highestTotal.label)}</small></p>` : ""}
     ${c.biggestWin ? `<p>Biggest win: <b>${c.biggestWin.runs} runs</b> by ${name(c.biggestWin.teamId)} <small>${esc(c.biggestWin.label)}</small></p>` : ""}
