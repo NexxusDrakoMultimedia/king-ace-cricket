@@ -1,0 +1,19 @@
+/* Brand guide page. Uses the shared design tokens; no inline styles or scripts. */
+body{margin:0;background:var(--surface);color:var(--ink);font:400 16px/24px var(--font-sans)}
+main{max-width:960px;margin:0 auto;padding:var(--space-10) var(--space-4)}
+h1,h2,h3{font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;color:var(--accent);font-weight:400}
+h1{font-size:40px;line-height:44px}h2{font-size:24px;line-height:30px;margin-top:var(--space-10)}h3{font-size:16px}
+p,li{max-width:70ch}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:var(--space-4)}
+figure{margin:0}figcaption{font-size:14px;line-height:20px;color:var(--ink-muted);margin-top:var(--space-2)}
+.tile{border:1px solid var(--line);border-radius:var(--radius-md);padding:var(--space-6);display:flex;align-items:center;justify-content:center;min-height:140px}
+.tile img{max-width:100%;max-height:120px}
+.on-white{background:#fff}.on-black{background:#000}.on-maroon{background:var(--maroon)}
+.wide{display:block;width:100%;height:auto;border-radius:var(--radius-md)}
+.sw{height:64px;border-radius:var(--radius-sm);border:1px solid var(--line)}
+.sw-maroon{background:var(--maroon)}.sw-gold{background:var(--gold)}.sw-black{background:#000}.sw-white{background:#fff}
+.icons{display:flex;gap:var(--space-4);align-items:end;flex-wrap:wrap}
+.icons img{display:block}
+code{font-family:ui-monospace,monospace;font-size:14px}
+.statement{border-left:4px solid var(--accent);padding-left:var(--space-4)}
+.no li{margin-bottom:var(--space-2)}
