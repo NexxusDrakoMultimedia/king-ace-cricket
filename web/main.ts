@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { DEFAULT_CONFIG } from "../src/innings.ts";
-import { buildScorebook } from "../src/scorebook.ts";
-import { clampStrength, makeTeam, newSoloMatch, normaliseTeam, TEAM_SIZE } from "../src/match.ts";
+import { buildScorebook, oversText } from "../src/scorebook.ts";
+import { clampStrength, inningsSummary, makeTeam, newSoloMatch, newVersusMatch, normaliseTeam, TEAM_SIZE, totalBalls, versusResult } from "../src/match.ts";
 import type { MatchRecord, Team } from "../src/match.ts";
 import { buildExport, parseImport } from "../src/exchange.ts";
 import { REGION_CHOICES, generateTeam } from "../src/names.ts";
+import { COMPETITIONS_KEY, MATCHES_KEY, TEAMS_KEY } from "../src/storage.ts";
 import type { RegionChoice } from "../src/names.ts";
 import { makeRng } from "../src/rng.ts";
 import { initAnalytics, track } from "./analytics.ts";
@@ -15,12 +16,13 @@ import { closeMatch, handleMatchAction, openMatch } from "./matchview.ts";
 import { handleRatingAction, renderRatings } from "./ratings.ts";
 import { handleRecordAction, initRecords, renderRecords } from "./records.ts";
 import { esc, renderScorebook, renderStage } from "./render.ts";
-import { handleSystemAction, initSystems, renderSystems } from "./systems.ts";
 import {
-  $, compStore, data, download, guard, kv, loadData, matchStore, persistent, randomSeed, setStatus, systemStore, teamStore,
+  $, compStore, data, download, guard, kv, loadData, matchStore, persistent, randomSeed, setStatus, teamStore,
 } from "./state.ts";
 
 const LAST_KEY = "kac:v1:last";
+/** Where tiered league systems were saved before they were removed. Only ever cleared. */
+const LEGACY_SYSTEMS_KEY = "kac:v1:systems";
 const AUTO_MS = 550;
 
 let match: MatchRecord;
@@ -28,13 +30,12 @@ let autoTimer: number | undefined;
 
 // ---- sections ----
 
-type View = "solo" | "comps" | "systems" | "ratings" | "records";
-const VIEWS: readonly View[] = ["solo", "comps", "systems", "ratings", "records"];
-const PANELS: Record<View, string> = { solo: "viewSolo", comps: "viewComps", systems: "viewSystems", ratings: "viewRatings", records: "viewRecords" };
+type View = "solo" | "comps" | "ratings" | "records";
+const VIEWS: readonly View[] = ["solo", "comps", "ratings", "records"];
+const PANELS: Record<View, string> = { solo: "viewSolo", comps: "viewComps", ratings: "viewRatings", records: "viewRecords" };
 
 function renderView(view: View): void {
   if (view === "comps") renderCompetitions();
-  else if (view === "systems") renderSystems();
   else if (view === "ratings") renderRatings();
   else if (view === "records") renderRecords();
 }
@@ -56,26 +57,80 @@ function refreshCurrent(): void {
   renderView(current);
 }
 
-// ---- solo innings ----
+// ---- solo innings and versus matches ----
 
 function finished(): boolean {
-  return match.progress >= match.innings[0]!.log.length;
+  return match.progress >= totalBalls(match);
+}
+
+/** The innings being played and how many of its balls are revealed. At an innings break, the next innings at ball 0. */
+function position(): { inn: number; pos: number; start: number } {
+  let start = 0;
+  for (let i = 0; i < match.innings.length; i++) {
+    const len = match.innings[i]!.log.length;
+    if (match.progress < start + len || i === match.innings.length - 1) return { inn: i, pos: Math.min(len, match.progress - start), start };
+    start += len;
+  }
+  return { inn: 0, pos: 0, start: 0 };
+}
+
+const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+function summaryText(): string {
+  const { inn, pos } = position();
+  const cfg = match.config;
+  const line = (i: number, balls?: number): { text: string; runs: number; balls: number } => {
+    const r = match.innings[i]!;
+    const s = inningsSummary(r.battingTeam, r.log, cfg, balls);
+    return { text: `${r.battingTeam.name} ${s.runs}/${s.wickets}`, runs: s.runs, balls: s.balls };
+  };
+  if (match.mode === "solo") {
+    const r = match.innings[0]!;
+    const s = inningsSummary(r.battingTeam, r.log, cfg, pos);
+    return `${r.battingTeam.name}: ${s.runs}/${s.wickets} after ${oversText(s.balls, cfg.ballsPerOver)} overs`;
+  }
+  const [a, b] = match.innings as [typeof match.innings[0], typeof match.innings[0]];
+  const result = versusResult(match);
+  if (result) {
+    const first = line(0);
+    const second = line(1);
+    const verdict = result.winner === null ? "Match tied." : `${result.winner === a.battingTeam.id ? a.battingTeam.name : b.battingTeam.name} won ${result.margin}.`;
+    return `${first.text} · ${second.text}. ${verdict}`;
+  }
+  if (inn === 0) {
+    const cur = line(0, pos);
+    return pos === 0
+      ? `${a.battingTeam.name} won the toss and bat first against ${b.battingTeam.name}.`
+      : `${cur.text} after ${oversText(cur.balls, cfg.ballsPerOver)} overs`;
+  }
+  const first = line(0);
+  const cur = line(1, pos);
+  const need = first.runs + 1 - cur.runs;
+  const left = cfg.soloOvers * cfg.ballsPerOver - cur.balls;
+  return `${first.text} · ${cur.text} after ${oversText(cur.balls, cfg.ballsPerOver)} overs. Need ${plural(need, "run")} from ${plural(left, "ball")}.`;
 }
 
 function draw(): void {
-  const inn = match.innings[0]!;
-  const sb = buildScorebook(inn.battingTeam, inn.log.slice(0, match.progress), match.config);
+  const { inn, pos } = position();
+  const cur = match.innings[inn]!;
   const done = finished();
-  $("stage").innerHTML = renderStage(inn.log, match.progress, sb, done);
-  $("sheet").innerHTML = renderScorebook(sb, {
+  const sb = buildScorebook(cur.battingTeam, cur.log.slice(0, pos), match.config, cur.bowlingTeam);
+  $("stage").innerHTML = renderStage(cur.log, pos, sb, pos >= cur.log.length);
+  const info = {
     dateText: new Date(match.createdAt).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" }),
     seed: match.seed,
     overs: match.config.soloOvers,
     ballsPerOver: match.config.ballsPerOver,
-    finished: done,
-  });
-  const t = sb.total;
-  $("summary").textContent = `${inn.battingTeam.name}: ${t.runs}/${t.wickets} after ${t.oversText} overs`;
+  };
+  // Every innings that has started, in batting order. Earlier innings are finished.
+  $("sheet").innerHTML = match.innings
+    .slice(0, inn + 1)
+    .map((r, i) => {
+      const book = i === inn ? sb : buildScorebook(r.battingTeam, r.log, match.config, r.bowlingTeam);
+      return renderScorebook(book, { ...info, finished: i < inn || done });
+    })
+    .join("");
+  $("summary").textContent = summaryText();
   for (const id of ["btnBall", "btnOver", "btnInnings", "btnAuto"]) ($(id) as HTMLButtonElement).disabled = done;
   if (done) stopAuto();
 }
@@ -93,7 +148,7 @@ async function persist(): Promise<void> {
 }
 
 function advance(balls: number): void {
-  match.progress = Math.min(match.innings[0]!.log.length, match.progress + balls);
+  match.progress = Math.min(totalBalls(match), match.progress + balls);
   draw();
   void persist();
 }
@@ -103,12 +158,20 @@ function playBall(): void {
 }
 
 function playOver(): void {
-  const log = match.innings[0]!.log;
   if (finished()) return;
-  const over = log[match.progress]!.over;
+  const { inn, pos } = position();
+  const log = match.innings[inn]!.log;
+  const over = log[pos]!.over;
   let n = 0;
-  while (match.progress + n < log.length && log[match.progress + n]!.over === over) n++;
+  while (pos + n < log.length && log[pos + n]!.over === over) n++;
   advance(n);
+}
+
+/** Plays to the end of the innings in progress (or the next one, at an innings break). */
+function playInnings(): void {
+  if (finished()) return;
+  const { inn, pos } = position();
+  advance(match.innings[inn]!.log.length - pos);
 }
 
 function stopAuto(): void {
@@ -136,10 +199,26 @@ async function startMatch(m: MatchRecord): Promise<void> {
 
 // ---- teams ----
 
-function renderTeamSelect(selectedId?: string): void {
+function renderTeamSelect(selectedId?: string, opponentId?: string): void {
   const sel = $<HTMLSelectElement>("newTeam");
   sel.innerHTML = data.teams.map((t) => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join("");
   if (selectedId && data.teams.some((t) => t.id === selectedId)) sel.value = selectedId;
+  renderOpponentSelect(opponentId);
+}
+
+/** Every team except the one batting, plus "nobody" for a single innings. */
+function renderOpponentSelect(selectedId?: string): void {
+  const sel = $<HTMLSelectElement>("newOpponent");
+  const keep = selectedId ?? sel.value;
+  const mine = $<HTMLSelectElement>("newTeam").value;
+  const others = data.teams.filter((t) => t.id !== mine);
+  sel.innerHTML = `<option value="">Nobody: bat a single innings</option>` + others.map((t) => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join("");
+  sel.value = others.some((t) => t.id === keep) ? keep : "";
+  sel.disabled = others.length === 0;
+  $("newOpponentHint").textContent = others.length === 0
+    ? "To play a match against another side, make a second team with Teams at the top of the page."
+    : "With no opponent your team bats a single innings. Pick one for a full match: a coin toss, then the second side chases the target, with a batting and bowling card for both.";
+  $("newStrengthWrap").hidden = sel.value === "";
 }
 
 function renderTeamList(): void {
@@ -192,12 +271,20 @@ async function renderMatchList(): Promise<void> {
   $("matchList").innerHTML =
     all
       .map((m) => {
-        const inn = m.innings[0]!;
-        const sb = buildScorebook(inn.battingTeam, inn.log.slice(0, m.progress), m.config);
         const when = new Date(m.updatedAt).toLocaleString("en-AU", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
-        const state = m.progress >= inn.log.length ? "complete" : `${sb.total.oversText} ov`;
+        let shown = m.progress;
+        const scores = m.innings
+          .map((inn) => {
+            const s = inningsSummary(inn.battingTeam, inn.log, m.config, Math.max(0, Math.min(inn.log.length, shown)));
+            shown -= inn.log.length;
+            return `<b>${esc(inn.battingTeam.name)}</b> ${s.runs}/${s.wickets}`;
+          })
+          .join(" v ");
+        const done = m.progress >= totalBalls(m);
+        const result = versusResult(m);
+        const state = !done ? "in progress" : result ? (result.winner === null ? "tied" : "complete") : "complete";
         return `<li${m.id === match.id ? ' class="current"' : ""}>
-          <span class="grow"><b>${esc(inn.battingTeam.name)}</b> ${sb.total.runs}/${sb.total.wickets}
+          <span class="grow">${scores}
             <small>${esc(state)} · seed ${m.seed} · ${esc(when)}</small></span>
           <button type="button" class="secondary small" data-action="match-open" data-id="${esc(m.id)}">Open</button>
           <button type="button" class="ghost small" data-action="match-delete" data-id="${esc(m.id)}" aria-label="Delete match">Delete</button></li>`;
@@ -208,7 +295,7 @@ async function renderMatchList(): Promise<void> {
 // ---- backup: export and import everything ----
 
 async function exportAll(): Promise<void> {
-  download("king-ace-cricket-backup.json", buildExport(await matchStore.list(), await teamStore.list(), new Date(), await compStore.list(), await systemStore.list()));
+  download("king-ace-cricket-backup.json", buildExport(await matchStore.list(), await teamStore.list(), new Date(), await compStore.list()));
   track({ name: "data_exported", kind: "backup" });
 }
 
@@ -225,7 +312,6 @@ async function importFile(file: File): Promise<void> {
     for (const m of result.matches) await matchStore.save(m);
     for (const t of result.teams) await teamStore.save(t);
     for (const c of result.competitions) await compStore.save(c);
-    for (const s of result.systems) await systemStore.save(s);
   } catch (e) {
     msg.textContent = e instanceof Error ? e.message : "Import failed.";
     msg.classList.add("error");
@@ -237,8 +323,33 @@ async function importFile(file: File): Promise<void> {
   refreshCurrent();
   track({ name: "data_imported" });
   const n = (count: number, one: string, many = `${one}s`): string => `${count} ${count === 1 ? one : many}`;
-  const parts = [n(result.matches.length, "solo match", "solo matches"), n(result.teams.length, "team"), n(result.competitions.length, "competition"), n(result.systems.length, "league system")];
+  const parts = [n(result.matches.length, "match", "matches"), n(result.teams.length, "team"), n(result.competitions.length, "competition")];
   msg.textContent = `Imported ${parts.filter((p) => !p.startsWith("0 ")).join(", ")}${result.skipped ? ` (${result.skipped} invalid entr${result.skipped === 1 ? "y" : "ies"} skipped)` : ""}.`;
+}
+
+/**
+ * Deletes every saved match, team and competition, and anything left over from
+ * features that are gone (tiered league systems). The cookie choice is kept, since
+ * it is the visitor's consent, not game data. Starts again with the starter teams.
+ */
+async function clearAll(): Promise<void> {
+  if (!confirm("Delete every saved match, team and competition in this browser? This can't be undone. Export first if you might want them back.")) return;
+  stopAuto();
+  for (const key of [MATCHES_KEY, TEAMS_KEY, COMPETITIONS_KEY, LAST_KEY, LEGACY_SYSTEMS_KEY]) {
+    try {
+      kv.removeItem(key);
+    } catch {
+      /* storage unavailable: nothing to clear */
+    }
+  }
+  await loadData();
+  renderTeamSelect();
+  await startMatch(newSoloMatch(data.teams[0]!, randomSeed()));
+  refreshCurrent();
+  const msg = $("backupMsg");
+  msg.classList.remove("error");
+  msg.textContent = "Cleared. You're starting fresh with Alpha XI and Omega XI.";
+  track({ name: "data_cleared" });
 }
 
 // ---- wiring ----
@@ -257,30 +368,43 @@ function wire(): void {
 
   $("btnBall").addEventListener("click", playBall);
   $("btnOver").addEventListener("click", playOver);
-  $("btnInnings").addEventListener("click", () => advance(match.innings[0]!.log.length));
+  $("btnInnings").addEventListener("click", playInnings);
   $("btnAuto").addEventListener("click", toggleAuto);
 
   $("btnNew").addEventListener("click", () => {
-    renderTeamSelect(match.innings[0]!.battingTeam.id);
+    // Offer the last match's teams again: the side that batted first, and its opponent if it had one.
+    const last = match.innings[0]!;
+    renderTeamSelect(last.battingTeam.id, last.bowlingTeam?.id ?? "");
     ($("newSeed") as HTMLInputElement).value = "";
     openDialog("newDialog");
+  });
+  $("newTeam").addEventListener("change", () => renderOpponentSelect());
+  $("newOpponent").addEventListener("change", () => {
+    $("newStrengthWrap").hidden = ($("newOpponent") as HTMLSelectElement).value === "";
   });
   $("newForm").addEventListener("submit", (e) => {
     e.preventDefault();
     const team = data.teams.find((t) => t.id === ($("newTeam") as HTMLSelectElement).value) ?? data.teams[0]!;
+    const opponent = data.teams.find((t) => t.id === ($("newOpponent") as HTMLSelectElement).value && t.id !== team.id);
     const overs = Math.min(50, Math.max(1, Math.floor(Number(($("newOvers") as HTMLInputElement).value) || 20)));
     const seedText = ($("newSeed") as HTMLInputElement).value.trim();
     const seed = seedText !== "" && Number.isInteger(Number(seedText)) ? Number(seedText) : randomSeed();
+    const config = { ...DEFAULT_CONFIG, soloOvers: overs };
     $<HTMLDialogElement>("newDialog").close();
-    track({ name: "solo_started" });
-    void startMatch(newSoloMatch(team, seed, { ...DEFAULT_CONFIG, soloOvers: overs }));
+    if (opponent) {
+      track({ name: "versus_started" });
+      void startMatch(newVersusMatch(team, opponent, seed, config, { strength: ($("newStrength") as HTMLInputElement).checked }));
+    } else {
+      track({ name: "solo_started" });
+      void startMatch(newSoloMatch(team, seed, config));
+    }
   });
   $("btnMatches").addEventListener("click", () => {
     void renderMatchList();
     openDialog("matchesDialog");
   });
   $("btnExport").addEventListener("click", () => {
-    download(`king-ace-cricket-${match.id}.json`, buildExport([match], [match.innings[0]!.battingTeam]));
+    download(`king-ace-cricket-${match.id}.json`, buildExport([match], match.innings.map((i) => i.battingTeam)));
     track({ name: "data_exported", kind: "match" });
   });
 
@@ -309,6 +433,7 @@ function wire(): void {
     openDialog("backupDialog");
   });
   $("btnExportAll").addEventListener("click", () => void guard(exportAll));
+  $("btnClearAll").addEventListener("click", () => void guard(clearAll));
   $("importFile").addEventListener("change", async (e) => {
     const input = e.target as HTMLInputElement;
     const file = input.files?.[0];
@@ -325,7 +450,6 @@ function wire(): void {
     const action = btn.dataset.action ?? "";
     if (handleMatchAction(action, btn) || handleRatingAction(action) || handleRecordAction(action, btn)) return;
     if (await handleCompAction(action, btn)) return;
-    if (await handleSystemAction(action, btn)) return;
     const id = btn.dataset.id ?? "";
     switch (action) {
       case "fx-card":
@@ -369,7 +493,6 @@ async function init(): Promise<void> {
   wire();
   initAnalytics();
   initCompetitions();
-  initSystems();
   initRecords();
   let lastId: string | null = null;
   try {

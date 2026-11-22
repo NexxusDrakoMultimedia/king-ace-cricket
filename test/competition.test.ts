@@ -5,7 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   advance, bracketSlots, champion, championTeams, createCompetition, fixtureSeed, isComplete, mix32, oversFaced, parseCompetition,
-  replayFixture, roundRobin, simulateAll, simulateNext, simulateRound, standings,
+  replayFixture, roundRobin, seededDraw, simulateAll, simulateNext, simulateRound, standings,
 } from "../src/competition.ts";
 import type { Competition } from "../src/competition.ts";
 import { DEFAULT_CONFIG } from "../src/innings.ts";
@@ -126,7 +126,10 @@ test("creating a competition validates its inputs", () => {
   assert.throws(() => createCompetition({ name: "x", kind: "league", teams: teams(17), seed: 1 }), /at most 16/);
   assert.equal(createCompetition({ name: "x", kind: "cup", teams: teams(17), seed: 1 }).teams.length, 17, "cups have no 16-team limit");
   assert.throws(() => createCompetition({ name: "x", kind: "cup", teams: teams(1025), seed: 1 }), /at most 1024/);
-  assert.throws(() => createCompetition({ name: "x", kind: "league", teams: teams(3), seed: 1, settings: { finals: "semis" } }), /at least 4/);
+  assert.throws(() => createCompetition({ name: "x", kind: "league", teams: teams(3), seed: 1, settings: { playoffSpots: 4 } }), /between 2 and 3/);
+  assert.throws(() => createCompetition({ name: "x", kind: "league", teams: teams(6), seed: 1, settings: { playoffSpots: 1 } }), /Playoff spots/);
+  assert.throws(() => createCompetition({ name: "x", kind: "league", teams: teams(6), seed: 1, settings: { playoffSpots: 2.5 } }), /Playoff spots/);
+  assert.equal(createCompetition({ name: "x", kind: "cup", teams: teams(6), seed: 1, settings: { playoffSpots: 4 } }).settings.playoffSpots, 0, "cups have no playoffs");
   const dup = teams(3);
   assert.equal(createCompetition({ name: "x", kind: "league", teams: [...dup, dup[0]!], seed: 1 }).teams.length, 3);
   assert.equal(createCompetition({ name: "   ", kind: "cup", teams: teams(2), seed: 1 }).name, "Cup");
@@ -159,19 +162,20 @@ test("net run rate charges a bowled-out side its full quota of overs", () => {
   assert.equal(oversFaced(chase, cfg), 15);
 });
 
-test("finals: top 2 play a final; top 4 play semi-finals (1v4, 2v3) then a final", () => {
-  const f = createCompetition({ name: "F", kind: "league", teams: teams(6), seed: 7, settings: { finals: "final" }, now: NOW });
+test("playoffs: top 2 play a final; top 4 play semi-finals (1v4, 2v3) then a final", () => {
+  const f = createCompetition({ name: "F", kind: "league", teams: teams(6), seed: 7, settings: { playoffSpots: 2 }, now: NOW });
   simulateAll(f, NOW);
   assert.equal(f.fixtures.filter((x) => x.stage === "final").length, 1);
   assert.equal(f.fixtures.length, 15 + 1);
   assert.equal(champion(f), f.fixtures.at(-1)!.result!.winner);
 
-  const s = createCompetition({ name: "S", kind: "league", teams: teams(6), seed: 7, settings: { finals: "semis" }, now: NOW });
+  const s = createCompetition({ name: "S", kind: "league", teams: teams(6), seed: 7, settings: { playoffSpots: 4 }, now: NOW });
   for (const fx of s.fixtures) assert.equal(fx.stage, "league");
   while (s.fixtures.filter((x) => x.stage === "league").some((x) => !x.result)) simulateNext(s, NOW);
-  assert.equal(s.fixtures.filter((x) => x.stage === "semi").length, 2);
+  const semis = s.fixtures.filter((x) => x.stage !== "league");
+  assert.equal(semis.length, 2);
+  assert.deepEqual(semis.map((x) => x.label), ["Semi-final 1", "Semi-final 2"]);
   const top = standings(s).map((r) => r.teamId);
-  const semis = s.fixtures.filter((x) => x.stage === "semi");
   assert.deepEqual([semis[0]!.a, semis[0]!.b], [top[0], top[3]]);
   assert.deepEqual([semis[1]!.a, semis[1]!.b], [top[1], top[2]]);
   assert.equal(s.fixtures.some((x) => x.stage === "final"), false, "the final waits for the semis");
@@ -180,6 +184,95 @@ test("finals: top 2 play a final; top 4 play semi-finals (1v4, 2v3) then a final
   const final = s.fixtures.find((x) => x.stage === "final")!;
   assert.deepEqual(new Set([final.a, final.b]), new Set(semis.map((x) => x.result!.winner)));
   assert.equal(champion(s), final.result!.winner);
+});
+
+test("playoffs take any number of spots: spots - 1 games, byes for the top seeds, seeded from the table", () => {
+  for (let spots = 2; spots <= 12; spots++) {
+    const comp = createCompetition({ name: "P", kind: "league", teams: teams(12, spots), seed: spots, settings: { playoffSpots: spots }, now: NOW });
+    simulateAll(comp, NOW);
+    const table = standings(comp).map((r) => r.teamId);
+    const ko = comp.fixtures.filter((f) => f.stage !== "league");
+    assert.equal(ko.length, spots - 1, `spots=${spots}`);
+    assert.equal(ko.filter((f) => f.stage === "final").length, 1);
+    assert.ok(ko.every((f) => f.result!.winner !== null), "knockout games always have a winner");
+    // Only the top `spots` of the table play, and the top seeds sit out the first round.
+    const inPlayoffs = new Set(ko.flatMap((f) => [f.a, f.b]));
+    assert.deepEqual(new Set(table.slice(0, spots)), inPlayoffs);
+    let size = 1;
+    while (size < spots) size *= 2;
+    assert.deepEqual(comp.byes, table.slice(0, size - spots), `byes go to seeds 1 to ${size - spots}`);
+    const firstRound = Math.min(...ko.map((f) => f.round));
+    for (const id of comp.byes) assert.ok(ko.every((f) => f.round !== firstRound || (f.a !== id && f.b !== id)));
+    const lost = new Set<string>();
+    for (const f of ko) {
+      assert.ok(!lost.has(f.a) && !lost.has(f.b), "nobody plays after losing");
+      lost.add(f.result!.winner === f.a ? f.b : f.a);
+    }
+    assert.equal(champion(comp), ko.at(-1)!.result!.winner);
+  }
+});
+
+test("six playoff spots: seeds 1 and 2 get byes, 3 v 6 and 4 v 5 in the quarter-finals", () => {
+  const comp = createCompetition({ name: "Six", kind: "league", teams: teams(8, 5), seed: 3, settings: { playoffSpots: 6 }, now: NOW });
+  while (comp.fixtures.filter((x) => x.stage === "league").some((x) => !x.result)) simulateNext(comp, NOW);
+  const t = standings(comp).map((r) => r.teamId);
+  const qf = comp.fixtures.filter((f) => f.stage !== "league");
+  assert.deepEqual(qf.map((f) => [f.a, f.b]), [[t[3], t[4]], [t[2], t[5]]]);
+  assert.deepEqual(qf.map((f) => f.label), ["Quarter-final 1", "Quarter-final 2"]);
+  simulateAll(comp, NOW);
+  const semis = comp.fixtures.filter((f) => f.label.startsWith("Semi-final"));
+  assert.equal(semis[0]!.a, t[0], "seed 1 meets the winner of 4 v 5");
+  assert.equal(semis[1]!.a, t[1], "seed 2 meets the winner of 3 v 6");
+});
+
+test("seededDraw keeps seeds 1 and 2 apart and gives byes to the top seeds", () => {
+  const ids = ["s1", "s2", "s3", "s4", "s5"];
+  const d = seededDraw(ids);
+  assert.equal(d.size, 8);
+  assert.deepEqual(d.byes, ["s1", "s2", "s3"]);
+  assert.deepEqual(d.ties, [["s4", "s5"]]);
+  assert.equal(d.bracket.indexOf("s1") < 4, d.bracket.indexOf("s2") >= 4, "1 and 2 are in different halves");
+  assert.deepEqual(seededDraw(["a", "b"]).ties, [["a", "b"]]);
+});
+
+test("competitions saved with the old finals setting load as playoff spots and play on the same", () => {
+  const comp = createCompetition({ name: "Old", kind: "league", teams: teams(6, 8), seed: 4, settings: { playoffSpots: 4 }, now: NOW });
+  const old = JSON.parse(JSON.stringify(comp));
+  delete old.settings.playoffSpots;
+  old.settings.finals = "semis";
+  const loaded = parseCompetition(old)!;
+  assert.equal(loaded.settings.playoffSpots, 4);
+  simulateAll(loaded, NOW);
+  simulateAll(comp, NOW);
+  assert.deepEqual(loaded.fixtures, comp.fixtures);
+  for (const [finals, spots] of [["none", 0], ["final", 2]] as const) {
+    old.settings.finals = finals;
+    assert.equal(parseCompetition(old)!.settings.playoffSpots, spots);
+  }
+  old.settings.finals = "quarters";
+  assert.equal(parseCompetition(old), null);
+  // A semi-final saved by the old code (stage "semi") still leads to a final.
+  const legacy = createCompetition({ name: "L", kind: "league", teams: teams(4, 9), seed: 2, settings: { playoffSpots: 4 }, now: NOW });
+  while (legacy.fixtures.some((f) => f.stage === "league" && !f.result)) simulateNext(legacy, NOW);
+  simulateNext(legacy, NOW);
+  simulateNext(legacy, NOW);
+  const raw = JSON.parse(JSON.stringify(legacy));
+  delete raw.bracket;
+  for (const f of raw.fixtures) if (f.stage === "knockout") f.stage = "semi";
+  raw.fixtures = raw.fixtures.filter((f: { stage: string }) => f.stage !== "final");
+  const back = parseCompetition(raw)!;
+  simulateAll(back, NOW);
+  assert.equal(back.fixtures.filter((f) => f.stage === "final").length, 1);
+  assert.ok(champion(back));
+});
+
+test("bad playoff spots in saved data are rejected", () => {
+  const comp = createCompetition({ name: "L", kind: "league", teams: teams(4), seed: 1, now: NOW });
+  for (const bad of [1, 5, -1, "4", 2.5]) {
+    const raw = JSON.parse(JSON.stringify(comp));
+    raw.settings.playoffSpots = bad;
+    assert.equal(parseCompetition(raw), null, String(bad));
+  }
 });
 
 test("simulateRound plays exactly one round and simulateNext one match", () => {
@@ -247,7 +340,7 @@ test("fixtures replay from their seed, and a changed result is detected", () => 
 });
 
 test("competitions round-trip through JSON, and bad data is rejected", () => {
-  const comp = createCompetition({ name: "L", kind: "league", teams: teams(6), seed: 9, settings: { finals: "final", strength: true }, now: NOW });
+  const comp = createCompetition({ name: "L", kind: "league", teams: teams(6), seed: 9, settings: { playoffSpots: 2, strength: true }, now: NOW });
   simulateAll(comp, NOW);
   assert.deepEqual(parseCompetition(JSON.parse(JSON.stringify(comp))), comp);
 
@@ -267,7 +360,7 @@ test("competitions round-trip through JSON, and bad data is rejected", () => {
 });
 
 test("advance does nothing while fixtures are still unplayed", () => {
-  const comp = createCompetition({ name: "L", kind: "league", teams: teams(4), seed: 1, settings: { finals: "final" }, now: NOW });
+  const comp = createCompetition({ name: "L", kind: "league", teams: teams(4), seed: 1, settings: { playoffSpots: 2 }, now: NOW });
   assert.equal(advance(comp), false);
   assert.equal(isComplete(comp), false);
 });
@@ -389,7 +482,7 @@ test("series: the final can be longer than earlier rounds, league games are neve
   const final = cup.fixtures.find((f) => f.stage === "final")!;
   assert.match(final.result!.margin, /best of 5/);
   assert.match(cup.fixtures[0]!.result!.margin, /best of 3/);
-  const ev = createCompetition({ name: "E", kind: "league", teams: teams(6, 4), seed: 2, now: NOW, settings: { finals: "semis", bestOf: 3, finalBestOf: 5 } });
+  const ev = createCompetition({ name: "E", kind: "league", teams: teams(6, 4), seed: 2, now: NOW, settings: { playoffSpots: 4, bestOf: 3, finalBestOf: 5 } });
   simulateAll(ev, NOW);
   for (const f of ev.fixtures) assert.equal(f.series === undefined, f.stage === "league", `${f.label} (${f.stage})`);
   assert.equal(ev.fixtures.find((f) => f.stage === "final")!.series!.length >= 3, true);

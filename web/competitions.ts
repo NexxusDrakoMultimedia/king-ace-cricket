@@ -4,12 +4,12 @@
 import { champion, championTeams, createCompetition, isComplete, nextFixture, simulateAll, simulateNext, simulateRound } from "../src/competition.ts";
 import type { Competition } from "../src/competition.ts";
 import { DEFAULT_CONFIG } from "../src/innings.ts";
-import { systemTeams } from "../src/leagueSystem.ts";
 import type { Team } from "../src/match.ts";
-import { REGION_CHOICES, generateTeams } from "../src/names.ts";
+import { REGION_CHOICES } from "../src/names.ts";
 import type { RegionChoice } from "../src/names.ts";
 import { bucketTeams, kindOf } from "../src/analyticsEvents.ts";
 import { buildExport } from "../src/exchange.ts";
+import { computeRatings, START_RATING } from "../src/ratings.ts";
 import { makeRng } from "../src/rng.ts";
 import { track } from "./analytics.ts";
 import { kindLabel, renderBody, statusBadge, tags, teamName } from "./compview.ts";
@@ -35,7 +35,7 @@ export function renderCompetitions(): void {
       .join("");
     root.innerHTML = `<div class="head"><div><p class="eyebrow">Leagues, cups and events</p><h2>Competitions</h2></div>
         <button type="button" class="primary" data-action="comp-new">New competition</button></div>
-      ${cards ? `<div class="grid">${cards}</div>` : `<div class="panel"><p>No competitions yet. Make a league, a knockout cup, or an eSports-style event with playoffs and a best-of-5 final. You can pick your own teams, generate them, seed a cup from a league system, or put champions against each other.</p></div>`}`;
+      ${cards ? `<div class="grid">${cards}</div>` : `<div class="panel"><p>No competitions yet. Make a league, a knockout cup, or an eSports-style event: a league stage, then seeded playoffs for as many teams as you like and a best-of-5 final. Pick from your own teams (make them with Teams at the top of the page), or put champions against each other.</p></div>`}`;
     return;
   }
   const next = nextFixture(comp);
@@ -63,46 +63,54 @@ export function regionOptions(selected: RegionChoice = "world"): string {
 }
 
 function setRules(kind: string): void {
-  const set = (id: string, value: string): void => void (($(id) as HTMLSelectElement).value = value);
+  const set = (id: string, value: string): void => void (($(id) as HTMLInputElement | HTMLSelectElement).value = value);
   if (kind === "event") {
-    set("compFinals", "semis"); set("compRounds", "1"); set("compBestOf", "3"); set("compFinalBestOf", "5");
+    set("compPlayoffs", "4"); set("compRounds", "1"); set("compBestOf", "3"); set("compFinalBestOf", "5");
   } else if (kind === "cup") {
     set("compBestOf", "1"); set("compFinalBestOf", "1");
   } else {
-    set("compFinals", "none"); set("compRounds", "1"); set("compBestOf", "1"); set("compFinalBestOf", "1");
+    set("compPlayoffs", "0"); set("compRounds", "1"); set("compBestOf", "1"); set("compFinalBestOf", "1");
   }
   $("compLeagueOpts").hidden = kind === "cup";
-  ($("compGen") as HTMLInputElement).value = kind === "cup" ? "16" : kind === "event" ? "8" : "8";
+  $("compSeedWrap").hidden = kind !== "cup";
 }
 
-function fillSystemTiers(): void {
-  const sys = data.systems.find((s) => s.id === ($("compSys") as HTMLSelectElement).value);
-  $("compSysOpts").hidden = !sys;
-  $("compSysTiers").innerHTML = sys
-    ? sys.tierNames.map((n, i) => `<label><input type="checkbox" value="${i}" checked> ${esc(n)}</label>`).join("")
-    : "";
-}
-
-export function openCompDialog(preset: { systemId?: string } = {}): void {
+export function openCompDialog(): void {
   $("compMyTeams").innerHTML = data.teams.map((t) => `<label><input type="checkbox" value="${esc(t.id)}"> ${esc(t.name)}</label>`).join("");
-  $("compRegion").innerHTML = regionOptions();
   const finished = everyCompetition().filter(isComplete);
   $("compChampsWrap").hidden = finished.length === 0;
   $("compChamps").innerHTML = finished
     .map((c) => `<label><input type="checkbox" value="${esc(c.id)}"> ${esc(c.name)}: ${esc(teamNameText(c, champion(c)!))}</label>`)
     .join("");
-  $("compSys").innerHTML = `<option value="">None</option>` + data.systems.map((s) => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join("");
-  ($("compSys") as HTMLSelectElement).value = preset.systemId ?? "";
   ($("compName") as HTMLInputElement).value = "";
   ($("compSeed") as HTMLInputElement).value = "";
-  ($("compKind") as HTMLSelectElement).value = preset.systemId ? "cup" : "league";
-  setRules(preset.systemId ? "cup" : "league");
-  if (preset.systemId) ($("compGen") as HTMLInputElement).value = "0";
+  ($("compKind") as HTMLSelectElement).value = "league";
+  ($("compSeeding") as HTMLSelectElement).value = "random";
+  setRules("league");
   ($("compStrength") as HTMLInputElement).checked = false;
-  fillSystemTiers();
   $("compMsg").textContent = "";
   const d = $<HTMLDialogElement>("compDialog");
   if (!d.open) d.showModal();
+}
+
+/**
+ * Cup seeds, best first: by Elo rating from every match played so far, or by team
+ * strength. Teams level on rating or strength are put in a random order (from the
+ * competition's seed), so the draw can be replayed. "random" leaves the whole draw
+ * to the competition.
+ */
+function cupSeeds(teams: readonly Team[], how: string, seed: number): string[] {
+  if (how !== "rating" && how !== "strength") return [];
+  const rng = makeRng(seed ^ 0x5eed5eed);
+  const shuffled = teams.map((t) => ({ t, r: rng() })).sort((a, b) => a.r - b.r).map((x) => x.t);
+  let score: (t: Team) => number;
+  if (how === "rating") {
+    const elo = new Map(computeRatings(everyCompetition()).map((r) => [r.teamId, r.elo]));
+    score = (t) => elo.get(t.id) ?? START_RATING;
+  } else {
+    score = (t) => t.strength ?? 0;
+  }
+  return shuffled.sort((a, b) => score(b) - score(a)).map((t) => t.id);
 }
 
 const num = (id: string, fallback: number, min: number, max: number): number => {
@@ -126,28 +134,15 @@ async function createFromDialog(): Promise<void> {
         teams.push(t);
       }
     };
-    // 1. Teams from a league system, in position order.
-    const sys = data.systems.find((s) => s.id === ($("compSys") as HTMLSelectElement).value);
-    if (sys) {
-      const tiers = [...$("compSysTiers").querySelectorAll<HTMLInputElement>("input:checked")].map((i) => Number(i.value));
-      const topText = ($("compSysTop") as HTMLInputElement).value.trim();
-      for (const t of systemTeams(sys, {
-        tiers, ...(topText ? { topPerTier: Math.max(1, Math.floor(Number(topText))) } : {}),
-        order: ($("compSysOrder") as HTMLSelectElement).value === "position" ? "position" : "tier",
-      })) add(t);
-    }
-    // 2. Champions of finished competitions.
+    // Champions of finished competitions, then my own teams.
     const champIds = [...$("compChamps").querySelectorAll<HTMLInputElement>("input:checked")].map((i) => i.value);
     for (const t of championTeams(champIds.map((id) => everyCompetition().find((c) => c.id === id)).filter((c): c is Competition => !!c))) add(t);
-    // 3. My own teams.
     for (const i of $("compMyTeams").querySelectorAll<HTMLInputElement>("input:checked")) {
       const t = data.teams.find((x) => x.id === i.value);
       if (t) add(t);
     }
-    const seeds = teams.map((t) => t.id);
-    // 4. Generated teams, named so they don't clash with the others.
-    const gen = num("compGen", 0, 0, 1024);
-    for (const t of generateTeams(makeRng(seed ^ 0x9e3779b9), gen, new Set(teams.map((x) => x.name)), ($("compRegion") as HTMLSelectElement).value as RegionChoice)) add(t);
+    if (teams.length < 2) throw new Error("Pick at least two teams. You can make more with Teams at the top of the page.");
+    const seeds = kind === "cup" ? cupSeeds(teams, ($("compSeeding") as HTMLSelectElement).value, seed) : [];
 
     const overs = num("compOvers", 20, 1, 50);
     const label = kindValue === "event" ? "Event" : kind === "cup" ? "Cup" : "League";
@@ -158,13 +153,13 @@ async function createFromDialog(): Promise<void> {
       settings: {
         strength: ($("compStrength") as HTMLInputElement).checked,
         rounds: ($("compRounds") as HTMLSelectElement).value === "2" ? 2 : 1,
-        finals: ($("compFinals") as HTMLSelectElement).value as "none" | "final" | "semis",
+        playoffSpots: kind === "league" ? num("compPlayoffs", 0, 0, 16) : 0,
         bestOf: Number(($("compBestOf") as HTMLSelectElement).value) as 1 | 3 | 5,
         finalBestOf: Number(($("compFinalBestOf") as HTMLSelectElement).value) as 1 | 3 | 5,
       },
     });
     await saveComp(comp);
-    track({ name: "competition_created", kind: kindOf(comp.kind, comp.settings), teams: bucketTeams(comp.teams.length), strength: comp.settings.strength, fromSystem: !!sys });
+    track({ name: "competition_created", kind: kindOf(comp.kind, comp.settings), teams: bucketTeams(comp.teams.length), strength: comp.settings.strength });
     openId = comp.id;
     $<HTMLDialogElement>("compDialog").close();
     renderCompetitions();
@@ -176,7 +171,11 @@ async function createFromDialog(): Promise<void> {
 
 export function initCompetitions(): void {
   $("compKind").addEventListener("change", () => setRules(($("compKind") as HTMLSelectElement).value));
-  $("compSys").addEventListener("change", fillSystemTiers);
+  $("compAllTeams").addEventListener("click", () => {
+    const boxes = [...$("compMyTeams").querySelectorAll<HTMLInputElement>("input")];
+    const all = boxes.every((b) => b.checked);
+    for (const b of boxes) b.checked = !all;
+  });
   $("compForm").addEventListener("submit", (e) => {
     e.preventDefault();
     void createFromDialog();

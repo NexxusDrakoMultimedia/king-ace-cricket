@@ -107,7 +107,8 @@ function drawCard(): string {
   const g = game();
   const sheets = g.result.innings
     .map((inn, i) => {
-      const sb = buildScorebook(teamOf(comp, inn.teamId), g.logs![i]!, comp.config);
+      const fielding = teamOf(comp, g.result.innings[1 - i]!.teamId);
+      const sb = buildScorebook(teamOf(comp, inn.teamId), g.logs![i]!, comp.config, fielding);
       return renderScorebook(sb, { dateText: formatDate(comp.createdAt), seed: gameSeed(), overs: comp.config.soloOvers, ballsPerOver: comp.config.ballsPerOver, finished: true });
     })
     .join("");

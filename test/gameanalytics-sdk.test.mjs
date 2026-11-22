@@ -59,7 +59,7 @@ test("GameAnalytics SDK: command-function API, one host, GA:: storage, no cookie
   command("initialize", FAKE_KEY, FAKE_SECRET);
   await wait(800);
   command("addDesignEvent", "view:comps");
-  command("addDesignEvent", "system:created", 3);
+  command("addDesignEvent", "competition:created:cup", 3);
   command("addProgressionEvent", "Start", "competition", "league");
   await wait(9500);
 

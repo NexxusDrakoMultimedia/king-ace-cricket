@@ -11,7 +11,7 @@ This is what happens to your information when you use King and Ace Cricket at `k
 
 ## What stays on your device (always)
 
-The game saves your matches, teams, competitions, league systems and your cookie choice in your browser's local storage (keys starting `kac:v1:`). That is how the game remembers things. It isn't tracking, and none of it leaves your device. Clear your browser's site data and it's gone, so use **Backup** to keep a copy.
+The game saves your matches, teams, competitions and your cookie choice in your browser's local storage (keys starting `kac:v1:`). That is how the game remembers things. It isn't tracking, and none of it leaves your device. Clear your browser's site data, or use **Clear all saved data** in **Backup**, and it's gone, so export a copy from **Backup** first if you want to keep it. Clearing keeps your cookie choice.
 
 ## Fonts
 
@@ -32,13 +32,12 @@ The page's text uses the fonts Orbitron and Exo 2. I host them myself, so loadin
 
 These are the only events, and each one is a fixed category with no free text:
 
-- the app opened, and which screen you looked at (solo, competitions, leagues, ratings or records)
-- a solo match was started
-- a competition was created (league, cup or event), with a team-count bucket (2 to 4, 5 to 8, 9 to 16, 17 to 64, or 65 and over), whether team strength was on, and whether it was seeded from a league system
+- the app opened, and which screen you looked at (solo, competitions, ratings or records)
+- a solo innings or a one-off match between two teams was started
+- a competition was created (league, cup or event), with a team-count bucket (2 to 4, 5 to 8, 9 to 16, 17 to 64, or 65 and over) and whether team strength was on
 - a competition was completed
-- a league system was created, or a season was completed (with the number of tiers)
 - a broadcast was started
-- data was exported or imported (and which kind, for exports)
+- data was exported, imported or cleared (and which kind, for exports)
 
 ## Your choices
 

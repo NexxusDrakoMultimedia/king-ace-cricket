@@ -59,6 +59,16 @@ Solo mode simulates a batting innings: you only play the batting side. Each over
 
 Suit only matters for the Queen in solo mode, and nowhere in the two-player game.
 
+### Solo matches between two teams
+
+Two teams can play a match under the solo rules. A coin toss decides who bats first, then each team bats one solo innings and the second chases the first's total, winning as soon as it passes it. Equal scores are a tie (a knockout match settles a tie on fewer wickets lost, then a coin toss).
+
+The cards alone decide every ball, so the fielding side's bowling is only for the scorebook: their five lowest in the batting order bowl in turn, starting from the bottom (11, 10, 9, 8, 7, then 11 again). Nobody bowls two overs in a row or more than a fifth of the overs, as in real limited-overs cricket, and every wicket is credited to the bowler of that over.
+
+### Playoffs
+
+A league can end in a knockout playoff for any number of its top teams. They are seeded by where they finished in the table, and the bracket is the next size up out of 2, 4, 8 or 16: the top seeds fill the empty places with a bye into the second round. Seeds meet in the standard order (1 plays the lowest seed, and 1 and 2 can only meet in the final).
+
 ## Disclaimer
 
 I must note that other people have probably created similar rules, and I do not claim to have invented the game, merely designed this particular variant. I made a mockup of the solo game in 2007 using GameMaker 7 and distributed that version amongst friends and family, and this ruleset is based on an evolution of said mockup.

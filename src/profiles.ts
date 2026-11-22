@@ -4,8 +4,6 @@
 import { champion, isComplete, replayFixture, standings, teamOf } from "./competition.ts";
 import type { Competition, Fixture } from "./competition.ts";
 import { playerOfMatch } from "./commentary.ts";
-import { allCompetitions } from "./leagueSystem.ts";
-import type { LeagueSystem } from "./leagueSystem.ts";
 import type { Team } from "./match.ts";
 import { buildScorebook } from "./scorebook.ts";
 
@@ -41,13 +39,13 @@ export const average = (s: BatStats): number | null => (s.innings - s.notOuts > 
 export const strikeRate = (s: BatStats): number | null => (s.balls > 0 ? (s.runs / s.balls) * 100 : null);
 
 export type HonourKind =
-  | "champion" | "runner-up" | "promoted" | "relegated" | "top-scorer" | "most-sixes" | "final-potm";
+  | "champion" | "runner-up" | "top-scorer" | "most-sixes" | "final-potm";
 
 export interface Honour {
   kind: HonourKind;
-  /** e.g. "Cup winners", "Division 1 champions, season 3". */
+  /** e.g. "Cup winners", "League champions". */
   title: string;
-  /** The competition or system it was won in. */
+  /** The competition it was won in. */
   source: string;
   competitionId: string;
 }
@@ -106,17 +104,6 @@ export interface Profiles {
   teams: Map<string, TeamRecord>;
   players: Map<string, PlayerRecord>;
   competitions: Map<string, CompetitionRecord>;
-}
-
-interface Entry {
-  comp: Competition;
-  /** How this competition is described in honours: its name, or "Division 1, season 3". */
-  label: string;
-  source: string;
-  /** In a league system's tier league (title honours) as opposed to a playoff. */
-  tier?: { index: number; season: number; system: LeagueSystem };
-  /** In a system: a pro/rel playoff (no title honours). */
-  playoff?: boolean;
 }
 
 interface CompStats {
@@ -200,25 +187,12 @@ function leaders(stats: CompStats, pick: (s: BatStats) => number, teamName: (id:
     .slice(0, n);
 }
 
-function entriesFor(standalone: readonly Competition[], systems: readonly LeagueSystem[]): Entry[] {
-  const out: Entry[] = standalone.map((comp) => ({ comp, label: comp.name, source: comp.name }));
-  for (const sys of systems) {
-    for (const season of sys.seasons) {
-      season.tiers.forEach((comp, i) => {
-        out.push({ comp, label: `${sys.tierNames[i]}, season ${season.number}`, source: sys.name, tier: { index: i, season: season.number, system: sys } });
-      });
-      for (const comp of season.playoffs) out.push({ comp, label: comp.name, source: sys.name, playoff: true });
-    }
-  }
-  return out.sort((a, b) => a.comp.createdAt.localeCompare(b.comp.createdAt) || a.comp.id.localeCompare(b.comp.id));
-}
-
-/** Builds profiles for all teams, players and competitions, from standalone competitions and league systems. */
-export function buildProfiles(standalone: readonly Competition[], systems: readonly LeagueSystem[] = []): Profiles {
+/** Builds profiles for all teams, players and competitions, oldest competition first. */
+export function buildProfiles(comps: readonly Competition[]): Profiles {
   const teams = new Map<string, TeamRecord>();
   const players = new Map<string, PlayerRecord>();
   const competitions = new Map<string, CompetitionRecord>();
-  const entries = entriesFor(standalone, systems);
+  const ordered = [...comps].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
 
   const team = (t: Team): TeamRecord => {
     let r = teams.get(t.id);
@@ -244,16 +218,15 @@ export function buildProfiles(standalone: readonly Competition[], systems: reado
     });
     return r;
   };
-  const honour = (teamId: string, h: Honour, playersToo = true): void => {
+  const honour = (teamId: string, h: Honour): void => {
     const t = teams.get(teamId);
     if (!t) return;
     t.honours.push(h);
     if (h.kind === "champion") t.titles++;
-    if (playersToo) for (const key of t.roster) players.get(key)?.honours.push(h);
+    for (const key of t.roster) players.get(key)?.honours.push(h);
   };
 
-  for (const e of entries) {
-    const { comp } = e;
+  for (const comp of ordered) {
     for (const t of comp.teams) team(t);
     const cs = compStats(comp);
     const nameOf = (id: string): string => teams.get(id)?.name ?? id;
@@ -293,51 +266,26 @@ export function buildProfiles(standalone: readonly Competition[], systems: reado
     const champId = done ? champion(comp) : null;
     const second = runnerUp(comp);
     competitions.set(comp.id, {
-      id: comp.id, name: e.label, kind: comp.kind, complete: done, matches: cs.games.length,
+      id: comp.id, name: comp.name, kind: comp.kind, complete: done, matches: cs.games.length,
       championId: champId, runnerUpId: second,
       topRuns: leaders(cs, (s) => s.runs, nameOf), topSixes: leaders(cs, (s) => s.sixes, nameOf),
       highestTotal: cs.highest, biggestWin: cs.biggestWin,
     });
 
-    if (!done || e.playoff) continue;
-    const src = e.source;
-    const winTitle = e.tier
-      ? `${e.tier.system.tierNames[e.tier.index]} champions, season ${e.tier.season}`
-      : comp.kind === "cup" ? "Cup winners" : "League champions";
+    if (!done) continue;
+    const src = comp.name;
+    const winTitle = comp.kind === "cup" ? "Cup winners" : "League champions";
     if (champId) honour(champId, { kind: "champion", title: winTitle, source: src, competitionId: comp.id });
-    if (second) honour(second, { kind: "runner-up", title: e.tier ? `${e.tier.system.tierNames[e.tier.index]} runners-up, season ${e.tier.season}` : "Runners-up", source: src, competitionId: comp.id });
+    if (second) honour(second, { kind: "runner-up", title: "Runners-up", source: src, competitionId: comp.id });
     const top = leaders(cs, (s) => s.runs, nameOf, 1)[0];
-    if (top) players.get(top.key)?.honours.push({ kind: "top-scorer", title: `Top run-scorer (${top.value})`, source: e.label, competitionId: comp.id });
+    if (top) players.get(top.key)?.honours.push({ kind: "top-scorer", title: `Top run-scorer (${top.value})`, source: src, competitionId: comp.id });
     const six = leaders(cs, (s) => s.sixes, nameOf, 1)[0];
-    if (six) players.get(six.key)?.honours.push({ kind: "most-sixes", title: `Most sixes (${six.value})`, source: e.label, competitionId: comp.id });
+    if (six) players.get(six.key)?.honours.push({ kind: "most-sixes", title: `Most sixes (${six.value})`, source: src, competitionId: comp.id });
     if (cs.finalPotm) {
-      players.get(playerKey(cs.finalPotm.teamId, cs.finalPotm.slot))?.honours.push({ kind: "final-potm", title: "Player of the final", source: e.label, competitionId: comp.id });
+      players.get(playerKey(cs.finalPotm.teamId, cs.finalPotm.slot))?.honours.push({ kind: "final-potm", title: "Player of the final", source: src, competitionId: comp.id });
     }
   }
 
-  // Promotion and relegation, from each closed season of each system.
-  for (const sys of systems) {
-    for (const season of sys.seasons) {
-      const o = season.outcome;
-      if (!o) continue;
-      o.promoted.forEach((ids, i) => {
-        for (const id of ids) {
-          honour(id, { kind: "promoted", title: `Promoted to ${sys.tierNames[i]}, season ${season.number}`, source: sys.name, competitionId: season.tiers[i + 1]!.id }, false);
-        }
-      });
-      o.relegated.forEach((ids, i) => {
-        for (const id of ids) {
-          honour(id, { kind: "relegated", title: `Relegated to ${sys.tierNames[i + 1]}, season ${season.number}`, source: sys.name, competitionId: season.tiers[i]!.id }, false);
-        }
-      });
-    }
-  }
   for (const t of teams.values()) if (t.lowest === Infinity) t.lowest = 0;
   return { teams, players, competitions };
-}
-
-/** Convenience: profiles for everything in storage. */
-export function buildAllProfiles(standalone: readonly Competition[], systems: readonly LeagueSystem[]): Profiles {
-  void allCompetitions;
-  return buildProfiles(standalone, systems);
 }

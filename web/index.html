@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>King and Ace Cricket</title>
-  <meta name="description" content="A cricket card game by Pyra Drake. Play solo innings, leagues, cups, tiered league systems and eSports-style events on a paper scorebook.">
+  <meta name="description" content="A cricket card game by Pyra Drake. Play solo innings, one-off matches, leagues, cups and eSports-style events on a paper scorebook.">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%237f0000'/%3E%3Ctext x='32' y='47' font-size='40' text-anchor='middle' font-family='sans-serif' font-weight='700' fill='%23ffd900'%3EK%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="fonts.css">
   <link rel="stylesheet" href="tokens.css">
@@ -19,7 +19,6 @@
     <nav class="tabs" aria-label="Sections">
       <button type="button" class="tab" data-view="solo" aria-current="page">Solo</button>
       <button type="button" class="tab" data-view="comps">Competitions</button>
-      <button type="button" class="tab" data-view="systems">Leagues</button>
       <button type="button" class="tab" data-view="ratings">Ratings</button>
       <button type="button" class="tab" data-view="records">Records</button>
     </nav>
@@ -52,7 +51,6 @@
     </section>
 
     <section id="viewComps" class="view" data-panel="comps" hidden><div id="compRoot"></div></section>
-    <section id="viewSystems" class="view" data-panel="systems" hidden><div id="sysRoot"></div></section>
     <section id="viewRatings" class="view" data-panel="ratings" hidden><div id="ratingsRoot"></div></section>
     <section id="viewRecords" class="view" data-panel="records" hidden><div id="recordsRoot"></div></section>
   </main>
@@ -80,14 +78,17 @@
 
   <dialog id="newDialog">
     <form id="newForm">
-      <h2>New solo match</h2>
-      <label>Batting team <select id="newTeam"></select></label>
+      <h2>New match</h2>
+      <label>Team <select id="newTeam"></select></label>
+      <label>Opponent <select id="newOpponent"></select></label>
+      <p class="hint" id="newOpponentHint">With no opponent your team bats a single innings. Pick one for a full match: a coin toss, then the second side chases the target, with a batting and bowling card for both.</p>
+      <label class="check" id="newStrengthWrap" hidden><input type="checkbox" id="newStrength"> Team strength changes the odds</label>
       <label>Overs <input id="newOvers" type="number" min="1" max="50" value="20" inputmode="numeric"></label>
       <label>Seed <input id="newSeed" type="number" step="1" placeholder="random" inputmode="numeric"></label>
-      <p class="hint">The same team, overs and seed always play out the same innings.</p>
+      <p class="hint">The same teams, overs and seed always play out the same match.</p>
       <div class="row">
         <button type="button" class="ghost" data-close>Cancel</button>
-        <button type="submit" class="primary">Start innings</button>
+        <button type="submit" class="primary">Start</button>
       </div>
     </form>
   </dialog>
@@ -106,6 +107,9 @@
       <label class="filebtn">Import file<input type="file" id="importFile" accept="application/json,.json"></label>
       <button type="button" class="ghost" data-close>Close</button>
     </div>
+    <h3>Start fresh</h3>
+    <p class="hint">Clearing deletes every saved match, team and competition in this browser, and gives you Alpha XI and Omega XI again. It can't be undone, so export first if you might want them back. Your cookie choice is kept.</p>
+    <div class="row"><button type="button" id="btnClearAll" class="secondary">Clear all saved data</button></div>
     <p id="backupMsg" class="note" aria-live="polite"></p>
   </dialog>
 
@@ -143,27 +147,24 @@
       <label>Format <select id="compKind">
         <option value="league">League: everyone plays everyone (up to 16 teams)</option>
         <option value="cup">Cup: knockout, any number of teams</option>
-        <option value="event">Event: league stage, playoffs and a grand final</option>
+        <option value="event">Event: league stage, then seeded playoffs and a grand final</option>
       </select></label>
       <fieldset>
         <legend>Teams</legend>
         <div id="compMyTeams" class="checks"></div>
-        <div class="inline">
-          <label>Generate <input id="compGen" type="number" min="0" max="1024" value="8" inputmode="numeric"></label>
-          <label>from <select id="compRegion"></select></label>
-        </div>
-        <label>Add teams from a league system <select id="compSys"></select></label>
-        <div id="compSysOpts" hidden>
-          <div id="compSysTiers" class="checks"></div>
-          <div class="inline">
-            <label>Top of each tier <input id="compSysTop" type="number" min="1" max="16" placeholder="all" inputmode="numeric"></label>
-            <label>Ranked by <select id="compSysOrder"><option value="tier">Tier, then position</option><option value="position">Position, then tier</option></select></label>
-          </div>
-        </div>
-        <p class="hint">Cups seed teams by their position in the system.</p>
+        <div class="row flush"><button type="button" class="ghost small" id="compAllTeams">Select all</button></div>
+        <p class="hint">Make more teams with Teams at the top of the page.</p>
         <div id="compChampsWrap" hidden>
           <p class="label">Add the champions of finished competitions</p>
           <div id="compChamps" class="checks"></div>
+        </div>
+        <div id="compSeedWrap" hidden>
+          <label>Seeding <select id="compSeeding">
+            <option value="random">Random draw</option>
+            <option value="rating">By Elo rating</option>
+            <option value="strength">By team strength</option>
+          </select></label>
+          <p class="hint">Seeds 1 and 2 can only meet in the final. If the number of teams isn't a power of 2 (4, 8, 16 and so on), the top seeds get byes into the second round.</p>
         </div>
       </fieldset>
       <fieldset>
@@ -174,9 +175,12 @@
         </div>
         <label class="check"><input type="checkbox" id="compStrength"> Team strength changes the odds</label>
         <p class="hint" id="compStrengthHint">Off: every team is equal and results are pure luck. On: each point of strength is a redraw of a King per innings. A 5 beats a 0 about three games in four.</p>
-        <div class="inline" id="compLeagueOpts">
-          <label>League games <select id="compRounds"><option value="1">Everyone plays once</option><option value="2">Home and away</option></select></label>
-          <label>Playoffs <select id="compFinals"><option value="none">None: top of the table wins</option><option value="final">Top 2 play a final</option><option value="semis">Top 4: semi-finals and a final</option></select></label>
+        <div id="compLeagueOpts">
+          <div class="inline">
+            <label>League games <select id="compRounds"><option value="1">Everyone plays once</option><option value="2">Home and away</option></select></label>
+            <label>Playoff spots <input id="compPlayoffs" type="number" min="0" max="16" value="0" inputmode="numeric"></label>
+          </div>
+          <p class="hint">0: no playoffs, the top of the table wins. Otherwise that many teams go from the table into a knockout, seeded by where they finished: the best plays the lowest. Any number from 2 up works; when it isn't 2, 4, 8 or 16 the top seeds get byes.</p>
         </div>
         <div class="inline">
           <label>Knockout matches <select id="compBestOf"><option value="1">Single match</option><option value="3">Best of 3</option><option value="5">Best of 5</option></select></label>
@@ -184,42 +188,6 @@
         </div>
       </fieldset>
       <p id="compMsg" class="note error" aria-live="polite"></p>
-      <div class="row">
-        <button type="button" class="ghost" data-close>Cancel</button>
-        <button type="submit" class="primary">Create</button>
-      </div>
-    </form>
-  </dialog>
-
-  <dialog id="sysDialog">
-    <form id="sysForm">
-      <h2>New league system</h2>
-      <p class="hint">Several tiers, each its own league. After every season the top teams go up and the bottom teams go down.</p>
-      <label>Name <input id="sysName" maxlength="60" autocomplete="off" placeholder="Brisbane Pyramid"></label>
-      <div class="inline">
-        <label>Tiers <input id="sysTiers" type="number" min="2" max="8" value="3" inputmode="numeric"></label>
-        <label>Teams per tier <input id="sysSize" type="number" min="4" max="16" value="8" inputmode="numeric"></label>
-      </div>
-      <fieldset>
-        <legend>Teams</legend>
-        <p class="hint">Your chosen teams fill the top tier first. Generated teams fill the rest.</p>
-        <div id="sysMyTeams" class="checks"></div>
-        <label>Generate from <select id="sysRegion"></select></label>
-      </fieldset>
-      <fieldset>
-        <legend>Rules</legend>
-        <div class="inline">
-          <label>Promotion places <input id="sysSpots" type="number" min="1" max="3" value="2" inputmode="numeric"></label>
-          <label>Overs <input id="sysOvers" type="number" min="1" max="50" value="20" inputmode="numeric"></label>
-        </div>
-        <label class="check"><input type="checkbox" id="sysPlayoffs"> Promotion and relegation playoffs (one extra place at each boundary)</label>
-        <label class="check"><input type="checkbox" id="sysStrength"> Team strength changes the odds</label>
-        <div class="inline">
-          <label>League games <select id="sysRounds"><option value="2">Home and away</option><option value="1">Everyone plays once</option></select></label>
-          <label>Seed <input id="sysSeed" type="number" step="1" placeholder="random" inputmode="numeric"></label>
-        </div>
-      </fieldset>
-      <p id="sysMsg" class="note error" aria-live="polite"></p>
       <div class="row">
         <button type="button" class="ghost" data-close>Cancel</button>
         <button type="submit" class="primary">Create</button>

@@ -3,7 +3,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildScorebook, oversText } from "../src/scorebook.ts";
+import { bowlerOfOver, bowlingAttack, buildScorebook, oversText } from "../src/scorebook.ts";
 import { DEFAULT_CONFIG, playSoloInnings } from "../src/innings.ts";
 import type { BallRecord } from "../src/innings.ts";
 import { makeTeam, newSoloMatch, parseMatch, parseTeam, normaliseTeam } from "../src/match.ts";
@@ -113,4 +113,44 @@ test("storage ignores corrupted or hostile data instead of throwing", async () =
   const bad = { ...newSoloMatch(team, 3), progress: 99999 };
   assert.equal(parseMatch(JSON.parse(JSON.stringify(bad))), null);
   assert.equal(parseTeam({ id: 1, name: "x", players: [] }), null);
+});
+
+// ---- bowling card ----
+
+test("bowlers come from the bottom of the order up, never two overs running, within the quota", () => {
+  const fielding = makeTeam("Fielders", Array.from({ length: 11 }, (_, i) => `F${i + 1}`), "tf");
+  assert.deepEqual(bowlingAttack(fielding), [10, 9, 8, 7, 6], "11, 10, 9, 8 and 7 bowl");
+  assert.equal(bowlerOfOver(fielding, 0), 10, "number 11 opens the bowling");
+  const overs = 20;
+  const count = new Map<number, number>();
+  for (let o = 0; o < overs; o++) {
+    const b = bowlerOfOver(fielding, o);
+    if (o > 0) assert.notEqual(b, bowlerOfOver(fielding, o - 1), `over ${o + 1}`);
+    count.set(b, (count.get(b) ?? 0) + 1);
+  }
+  for (const n of count.values()) assert.ok(n <= Math.ceil(overs / 5));
+});
+
+test("the bowling card adds up to the innings, and every wicket is credited to a bowler", () => {
+  const batting = makeTeam("Bat", [], "tb");
+  const fielding = makeTeam("Field", Array.from({ length: 11 }, (_, i) => `F${i + 1}`), "tf");
+  for (let seed = 1; seed <= 60; seed++) {
+    const log = playSoloInnings(makeRng(seed), DEFAULT_CONFIG, { log: true }).log!;
+    const sb = buildScorebook(batting, log, DEFAULT_CONFIG, fielding);
+    assert.equal(sb.bowlingTeamName, "Field");
+    assert.equal(sb.bowlers.reduce((t, b) => t + b.runs, 0), sb.total.runs);
+    assert.equal(sb.bowlers.reduce((t, b) => t + b.wickets, 0), sb.total.wickets);
+    assert.equal(sb.bowlers.reduce((t, b) => t + b.balls, 0), sb.total.balls);
+    assert.equal(sb.bowlers.reduce((t, b) => t + b.maidens, 0), sb.bowling.maidens);
+    assert.equal(sb.bowlers[0]!.name, "F11", "the first bowler on is number 11");
+    for (const bt of sb.batters) if (bt.out) assert.ok(bt.out.bowler && fielding.players.includes(bt.out.bowler));
+    for (const o of sb.overs) assert.ok(o.bowler);
+  }
+  // Without a fielding side there is no per-bowler card, and nothing else changes.
+  const log = playSoloInnings(makeRng(3), DEFAULT_CONFIG, { log: true }).log!;
+  const plain = buildScorebook(batting, log, DEFAULT_CONFIG);
+  assert.deepEqual(plain.bowlers, []);
+  assert.equal(plain.bowlingTeamName, undefined);
+  const named = buildScorebook(batting, log, DEFAULT_CONFIG, fielding);
+  assert.deepEqual(named.total, plain.total);
 });

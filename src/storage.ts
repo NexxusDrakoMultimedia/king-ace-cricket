@@ -99,4 +99,3 @@ export class KVStore<T extends { id: string }> implements Store<T> {
 export const MATCHES_KEY = "kac:v1:matches";
 export const TEAMS_KEY = "kac:v1:teams";
 export const COMPETITIONS_KEY = "kac:v1:competitions";
-export const SYSTEMS_KEY = "kac:v1:systems";

@@ -21,6 +21,30 @@ function markHtml(m: BallMark): string {
   return `<span class="mk ${cls}" title="${esc(title)}">${esc(m.label)}</span>`;
 }
 
+/**
+ * The bowling card: one line per bowler when the fielding side is known (a match
+ * between two teams), otherwise the fielding side's figures in one line.
+ */
+function bowlingCard(sb: Scorebook): string {
+  const head = `<thead><tr><th>Bowler</th><th class="num">O</th><th class="num">M</th><th class="num">R</th><th class="num">W</th><th class="num">Econ</th></tr></thead>`;
+  if (sb.bowlingTeamName === undefined) {
+    const b = sb.bowling;
+    return `<table class="bowl">${head}
+      <tbody><tr><td class="ink">Fielding side</td><td class="num ink">${esc(b.oversText)}</td>
+        <td class="num ink">${b.maidens}</td><td class="num ink">${b.runs}</td><td class="num ink">${b.wickets}</td>
+        <td class="num ink">${sb.total.balls ? sb.total.runRate.toFixed(2) : ""}</td></tr></tbody>
+    </table>`;
+  }
+  const rows = sb.bowlers
+    .map((b) => `<tr><td class="ink">${esc(b.name)}</td><td class="num ink">${esc(b.oversText)}</td><td class="num ink">${b.maidens}</td>
+      <td class="num ink">${b.runs}</td><td class="num ink">${b.wickets}</td><td class="num ink">${b.economy === null ? "" : b.economy.toFixed(2)}</td></tr>`)
+    .join("");
+  return `<p class="fine">${esc(sb.bowlingTeamName)}</p><table class="bowl">${head}
+    <tbody>${rows || `<tr><td colspan="6" class="ink">No balls bowled yet</td></tr>`}</tbody>
+    <tfoot><tr><td>Total</td><td class="num ink">${esc(sb.bowling.oversText)}</td><td class="num ink">${sb.bowling.maidens}</td>
+      <td class="num ink">${sb.bowling.runs}</td><td class="num ink">${sb.bowling.wickets}</td><td></td></tr></tfoot></table>`;
+}
+
 export interface SheetInfo {
   dateText: string;
   seed: number;
@@ -35,7 +59,7 @@ export function renderScorebook(sb: Scorebook, info: SheetInfo): string {
   const rows = sb.batters
     .map((b) => {
       const how = b.out
-        ? `${cardHtml(b.out.card)} <span class="wk">W${b.out.wicketNo}</span> <span class="at">${esc(b.out.at)} ov</span>`
+        ? `${b.out.bowler ? `<span class="ink">b ${esc(b.out.bowler)}</span> ` : ""}${cardHtml(b.out.card)} <span class="wk">W${b.out.wicketNo}</span> <span class="at">${esc(b.out.at)} ov</span>`
         : b.entered
           ? `<span class="notout">${info.finished || t.allOut ? "not out" : "batting"}</span>`
           : "";
@@ -76,6 +100,7 @@ export function renderScorebook(sb: Scorebook, info: SheetInfo): string {
         .join("")
     : `<li class="none">No wickets yet</li>`;
 
+  const named = sb.bowlers.length > 0 || sb.bowlingTeamName !== undefined;
   const overRows = Array.from({ length: info.overs }, (_, i) => {
     const o = sb.overs.find((x) => x.over === i);
     const boxes = Array.from({ length: info.ballsPerOver }, (_, j) => {
@@ -83,7 +108,7 @@ export function renderScorebook(sb: Scorebook, info: SheetInfo): string {
       return `<span class="box">${m ? markHtml(m) : ""}</span>`;
     }).join("");
     return `<tr>
-      <td class="no">${i + 1}</td>
+      <td class="no">${i + 1}</td>${named ? `<td class="ink">${o?.bowler ? esc(o.bowler) : ""}</td>` : ""}
       <td><div class="mkrow">${boxes}</div></td>
       <td class="num ink">${o ? o.runs : ""}${o?.maiden ? ' <small class="m">M</small>' : ""}</td>
       <td class="num ink">${o ? o.wickets || "" : ""}</td>
@@ -125,11 +150,7 @@ export function renderScorebook(sb: Scorebook, info: SheetInfo): string {
       </section>
       <section>
         <h3>Bowling</h3>
-        <table class="bowl">
-          <thead><tr><th>Opposition</th><th class="num">O</th><th class="num">M</th><th class="num">R</th><th class="num">W</th></tr></thead>
-          <tbody><tr><td class="ink">Fielding side</td><td class="num ink">${esc(sb.bowling.oversText)}</td>
-            <td class="num ink">${sb.bowling.maidens}</td><td class="num ink">${sb.bowling.runs}</td><td class="num ink">${sb.bowling.wickets}</td></tr></tbody>
-        </table>
+        ${bowlingCard(sb)}
       </section>
     </div>
 
@@ -143,7 +164,7 @@ export function renderScorebook(sb: Scorebook, info: SheetInfo): string {
       <h3>Over by over</h3>
       <div class="scroll">
         <table class="overs">
-          <thead><tr><th class="no">Over</th><th>Balls</th><th class="num">Runs</th><th class="num">Wkts</th><th class="num">Total</th></tr></thead>
+          <thead><tr><th class="no">Over</th>${named ? "<th>Bowler</th>" : ""}<th>Balls</th><th class="num">Runs</th><th class="num">Wkts</th><th class="num">Total</th></tr></thead>
           <tbody>${overRows}</tbody>
         </table>
       </div>
