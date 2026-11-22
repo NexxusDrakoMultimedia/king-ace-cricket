@@ -35,7 +35,7 @@ export function renderCompetitions(): void {
       .join("");
     root.innerHTML = `<div class="head"><div><p class="eyebrow">Leagues, cups and events</p><h2>Competitions</h2></div>
         <button type="button" class="primary" data-action="comp-new">New competition</button></div>
-      ${cards ? `<div class="grid">${cards}</div>` : `<div class="panel"><p>No competitions yet. Make a league, a knockout cup, or an eSports-style event: a league stage, then seeded playoffs for as many teams as you like and a best-of-5 final. Pick from your own teams (make them with Teams at the top of the page), or put champions against each other.</p></div>`}`;
+      ${cards ? `<div class="grid">${cards}</div>` : `<div class="panel"><p>No competitions yet. Make a League (everyone plays everyone), a Cup (straight knockout), a Major (a league stage, then seeded playoffs for as many teams as you like and a best-of-5 final), or Worlds (World Cup-style groups, then a knockout). Pick from your own teams (make them with Teams at the top of the page), or put champions against each other.</p></div>`}`;
     return;
   }
   const next = nextFixture(comp);
@@ -62,17 +62,22 @@ export function regionOptions(selected: RegionChoice = "world"): string {
   return REGION_CHOICES.map((r) => `<option value="${r.id}" ${r.id === selected ? "selected" : ""}>${esc(r.label)}</option>`).join("");
 }
 
+/** Presets for each format. Every rule can still be changed after picking one. */
 function setRules(kind: string): void {
   const set = (id: string, value: string): void => void (($(id) as HTMLInputElement | HTMLSelectElement).value = value);
-  if (kind === "event") {
+  if (kind === "major") {
     set("compPlayoffs", "4"); set("compRounds", "1"); set("compBestOf", "3"); set("compFinalBestOf", "5");
+  } else if (kind === "worlds") {
+    set("compGroupSize", "4"); set("compGroupAdvance", "2"); set("compRounds", "1"); set("compBestOf", "1"); set("compFinalBestOf", "3");
   } else if (kind === "cup") {
     set("compBestOf", "1"); set("compFinalBestOf", "1");
   } else {
     set("compPlayoffs", "0"); set("compRounds", "1"); set("compBestOf", "1"); set("compFinalBestOf", "1");
   }
   $("compLeagueOpts").hidden = kind === "cup";
-  $("compSeedWrap").hidden = kind !== "cup";
+  $("compPlayoffWrap").hidden = kind !== "league" && kind !== "major";
+  $("compGroupOpts").hidden = kind !== "worlds";
+  $("compSeedWrap").hidden = kind !== "cup" && kind !== "worlds";
 }
 
 export function openCompDialog(): void {
@@ -123,7 +128,7 @@ async function createFromDialog(): Promise<void> {
   msg.textContent = "";
   try {
     const kindValue = ($("compKind") as HTMLSelectElement).value;
-    const kind = kindValue === "cup" ? "cup" : "league";
+    const kind = kindValue === "cup" ? "cup" : kindValue === "worlds" ? "groups" : "league";
     const seedText = ($("compSeed") as HTMLInputElement).value.trim();
     const seed = seedText !== "" && Number.isInteger(Number(seedText)) ? Number(seedText) : randomSeed();
     const teams: Team[] = [];
@@ -142,10 +147,12 @@ async function createFromDialog(): Promise<void> {
       if (t) add(t);
     }
     if (teams.length < 2) throw new Error("Pick at least two teams. You can make more with Teams at the top of the page.");
-    const seeds = kind === "cup" ? cupSeeds(teams, ($("compSeeding") as HTMLSelectElement).value, seed) : [];
+    const seeds = kind !== "league" ? cupSeeds(teams, ($("compSeeding") as HTMLSelectElement).value, seed) : [];
+    const playoffSpots = kind === "league" ? num("compPlayoffs", 0, 0, 16) : 0;
+    if (kindValue === "major" && playoffSpots === 0) throw new Error("A Major needs playoff spots. With none, make it a League.");
 
     const overs = num("compOvers", 20, 1, 50);
-    const label = kindValue === "event" ? "Event" : kind === "cup" ? "Cup" : "League";
+    const label = { league: "League", cup: "Cup", major: "Major", worlds: "Worlds" }[kindValue] ?? "League";
     const comp = createCompetition({
       name: ($("compName") as HTMLInputElement).value || `${label} ${formatDate(new Date().toISOString())}`,
       kind, teams, seed, seeds,
@@ -153,7 +160,9 @@ async function createFromDialog(): Promise<void> {
       settings: {
         strength: ($("compStrength") as HTMLInputElement).checked,
         rounds: ($("compRounds") as HTMLSelectElement).value === "2" ? 2 : 1,
-        playoffSpots: kind === "league" ? num("compPlayoffs", 0, 0, 16) : 0,
+        playoffSpots,
+        groupSize: kind === "groups" ? num("compGroupSize", 4, 2, 16) : 0,
+        groupAdvance: kind === "groups" ? num("compGroupAdvance", 2, 1, 16) : 0,
         bestOf: Number(($("compBestOf") as HTMLSelectElement).value) as 1 | 3 | 5,
         finalBestOf: Number(($("compFinalBestOf") as HTMLSelectElement).value) as 1 | 3 | 5,
       },

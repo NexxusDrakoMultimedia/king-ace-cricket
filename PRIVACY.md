@@ -34,7 +34,7 @@ These are the only events, and each one is a fixed category with no free text:
 
 - the app opened, and which screen you looked at (solo, competitions, ratings or records)
 - a solo innings or a one-off match between two teams was started
-- a competition was created (league, cup or event), with a team-count bucket (2 to 4, 5 to 8, 9 to 16, 17 to 64, or 65 and over) and whether team strength was on
+- a competition was created (League, Cup, Major or Worlds), with a team-count bucket (2 to 4, 5 to 8, 9 to 16, 17 to 64, or 65 and over) and whether team strength was on
 - a competition was completed
 - a broadcast was started
 - data was exported, imported or cleared (and which kind, for exports)

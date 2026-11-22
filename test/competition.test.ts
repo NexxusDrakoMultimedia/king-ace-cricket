@@ -5,7 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   advance, bracketSlots, champion, championTeams, createCompetition, fixtureSeed, isComplete, mix32, oversFaced, parseCompetition,
-  replayFixture, roundRobin, seededDraw, simulateAll, simulateNext, simulateRound, standings,
+  drawGroups, formatOf, groupQualifiers, replayFixture, roundRobin, seededDraw, separateGroups, simulateAll, simulateNext, simulateRound, standings,
 } from "../src/competition.ts";
 import type { Competition } from "../src/competition.ts";
 import { DEFAULT_CONFIG } from "../src/innings.ts";
@@ -513,4 +513,139 @@ test("older competitions without bestOf settings load as best-of-1", () => {
   assert.equal(loaded.settings.finalBestOf, 1);
   old.settings.bestOf = 4;
   assert.equal(parseCompetition(old), null);
+});
+
+// ---- Worlds: groups, then a knockout ----
+
+const worlds = (n: number, groupSize: number, groupAdvance: number, seed = 1, extra = {}) =>
+  createCompetition({ name: "", kind: "groups", teams: teams(n, seed), seed, now: NOW, settings: { groupSize, groupAdvance, ...extra } });
+
+test("the four formats are named League, Cup, Major and Worlds", () => {
+  assert.equal(formatOf(createCompetition({ name: "", kind: "league", teams: teams(4), seed: 1 })), "League");
+  assert.equal(formatOf(createCompetition({ name: "", kind: "league", teams: teams(4), seed: 1, settings: { playoffSpots: 2 } })), "Major");
+  assert.equal(formatOf(createCompetition({ name: "", kind: "cup", teams: teams(4), seed: 1 })), "Cup");
+  const w = worlds(8, 4, 2);
+  assert.equal(formatOf(w), "Worlds");
+  assert.equal(w.name, "Worlds");
+});
+
+test("Worlds groups: every team once, sizes within one of each other, games only inside a group", () => {
+  for (const [n, size] of [[8, 4], [32, 4], [10, 4], [13, 5], [7, 3], [48, 6], [5, 2]] as const) {
+    const w = worlds(n, size, 1, n);
+    const g = w.groups!;
+    assert.equal(g.length, Math.ceil(n / size), `n=${n} size=${size}`);
+    assert.equal(g.flat().length, n);
+    assert.equal(new Set(g.flat()).size, n);
+    const lens = g.map((x) => x.length);
+    assert.ok(Math.max(...lens) <= size && Math.max(...lens) - Math.min(...lens) <= 1, `${lens}`);
+    const groupOf = new Map(g.flatMap((x, i) => x.map((id) => [id, i] as const)));
+    const expected = g.reduce((t, x) => t + (x.length * (x.length - 1)) / 2, 0);
+    assert.equal(w.fixtures.length, expected, "a round robin in each group");
+    for (const f of w.fixtures) assert.equal(groupOf.get(f.a), groupOf.get(f.b));
+  }
+  assert.equal(worlds(8, 4, 2, 1, { rounds: 2 }).fixtures.length, 24, "home and away doubles the group games");
+});
+
+test("the Worlds draw puts one seed from each pot in every group", () => {
+  const seeds = Array.from({ length: 16 }, (_, i) => `s${i + 1}`);
+  const groups = drawGroups(seeds, 4, makeRng(3));
+  assert.equal(groups.length, 4);
+  for (const g of groups) {
+    const pots = g.map((id) => Math.floor((Number(id.slice(1)) - 1) / 4)).sort();
+    assert.deepEqual(pots, [0, 1, 2, 3], "one from each pot");
+  }
+  // Seeds passed in are respected: the top four seeds are in four different groups.
+  const t = teams(16, 4);
+  const w = createCompetition({ name: "", kind: "groups", teams: t, seed: 9, seeds: t.slice(0, 4).map((x) => x.id), settings: { groupSize: 4, groupAdvance: 2 } });
+  assert.deepEqual(w.groups!.map((g) => t.slice(0, 4).filter((x) => g.includes(x.id)).length), [1, 1, 1, 1]);
+});
+
+test("Worlds play out: the top of each group go through, group winners seeded first, and there is one champion", () => {
+  for (const [n, size, adv] of [[8, 4, 2], [16, 4, 2], [12, 4, 2], [12, 3, 1], [10, 5, 3], [24, 4, 2], [6, 6, 4]] as const) {
+    const w = worlds(n, size, adv, n + size);
+    simulateAll(w, NOW);
+    const g = w.groups!;
+    const through = groupQualifiers(w);
+    assert.equal(through.length, g.length * adv);
+    for (const grp of g) {
+      const top = standings(w, grp).slice(0, adv).map((r) => r.teamId);
+      for (const id of top) assert.ok(through.includes(id), "the top of every group goes through");
+    }
+    // Every group winner is seeded above every runner-up.
+    const winners = new Set(g.map((grp) => standings(w, grp)[0]!.teamId));
+    assert.deepEqual(new Set(through.slice(0, g.length)), winners);
+    const ko = w.fixtures.filter((f) => f.stage !== "league");
+    assert.equal(ko.length, through.length - 1, `${n}/${size}/${adv}: n-1 knockout games`);
+    assert.ok(ko.every((f) => f.result!.winner !== null));
+    assert.equal(ko.filter((f) => f.stage === "final").length, 1);
+    assert.equal(champion(w), ko.at(-1)!.result!.winner);
+    assert.ok(isComplete(w));
+    // Only qualifiers play in the knockout, and nobody plays after losing.
+    const lost = new Set<string>();
+    for (const f of ko) {
+      assert.ok(through.includes(f.a) && through.includes(f.b));
+      assert.ok(!lost.has(f.a) && !lost.has(f.b));
+      lost.add(f.result!.winner === f.a ? f.b : f.a);
+    }
+  }
+});
+
+test("Worlds keeps group-mates apart in the first knockout round", () => {
+  for (let seed = 1; seed <= 25; seed++) {
+    const w = worlds(16, 4, 2, seed);
+    simulateAll(w, NOW);
+    const groupOf = new Map(w.groups!.flatMap((x, i) => x.map((id) => [id, i] as const)));
+    const first = Math.min(...w.fixtures.filter((f) => f.stage !== "league").map((f) => f.round));
+    for (const f of w.fixtures.filter((x) => x.round === first && x.stage !== "league")) {
+      assert.notEqual(groupOf.get(f.a), groupOf.get(f.b), `seed ${seed}: ${f.label} is a group rematch`);
+    }
+  }
+  // The swap itself: two ties that are both rematches are fixed by swapping their lower seeds.
+  const d = separateGroups({ bracket: ["a1", "a2", "b1", "b2"], byes: [], ties: [], size: 4 }, (id) => (id[0] === "a" ? 0 : 1));
+  assert.deepEqual(d.bracket, ["a1", "b2", "b1", "a2"]);
+  assert.deepEqual(d.ties, [["a1", "b2"], ["b1", "a2"]]);
+});
+
+test("Worlds validates its settings", () => {
+  assert.throws(() => worlds(8, 1, 1), /between 2 and 16/);
+  assert.throws(() => worlds(8, 17, 1), /between 2 and 16/);
+  assert.throws(() => worlds(8, 4, 5), /between 1 and 4/);
+  assert.throws(() => worlds(8, 4, 0), /between 1 and 4/);
+  assert.throws(() => worlds(4, 4, 1), /between 2 and 4/, "one group must send at least two through");
+  assert.throws(() => worlds(129, 4, 1), /at most 128/);
+  assert.equal(worlds(4, 4, 2).groups!.length, 1);
+  // Group settings are only for Worlds.
+  const l = createCompetition({ name: "", kind: "league", teams: teams(4), seed: 1, settings: { groupSize: 4, groupAdvance: 2 } });
+  assert.equal(l.settings.groupSize, 0);
+  assert.equal(l.groups, undefined);
+});
+
+test("Worlds round-trips through JSON, replays its seed, and bad groups are rejected", () => {
+  const w = worlds(12, 4, 2, 5, { bestOf: 3 });
+  simulateRound(w, NOW);
+  assert.deepEqual(parseCompetition(JSON.parse(JSON.stringify(w))), w);
+  simulateAll(w, NOW);
+  assert.deepEqual(parseCompetition(JSON.parse(JSON.stringify(w))), w);
+  for (const f of w.fixtures) assert.equal(replayFixture(w, f).consistent, true);
+  const again = worlds(12, 4, 2, 5, { bestOf: 3 });
+  simulateAll(again, NOW);
+  assert.deepEqual(again.fixtures, w.fixtures, "the same seed plays the same Worlds");
+
+  const bad = (mutate: (c: Competition) => void): unknown => {
+    const c = structuredClone(w);
+    mutate(c);
+    return parseCompetition(JSON.parse(JSON.stringify(c)));
+  };
+  assert.equal(bad((c) => { c.groups![0]!.push(c.groups![1]![0]!); }), null, "a team in two groups");
+  assert.equal(bad((c) => { c.groups![0]!.pop(); }), null, "a team in no group");
+  assert.equal(bad((c) => { delete c.groups; }), null);
+  assert.equal(bad((c) => { c.settings.groupAdvance = 5; }), null);
+  assert.equal(bad((c) => { c.settings.groupSize = 0; }), null);
+  assert.equal(bad((c) => { const f = c.fixtures[0]!; f.b = c.groups!.find((g) => !g.includes(f.a))![0]!; }), null, "a group game across groups");
+  assert.equal(bad((c) => { c.kind = "league"; }), null, "group settings on a league");
+  // Older competitions have no group settings and still load.
+  const old = JSON.parse(JSON.stringify(createCompetition({ name: "", kind: "league", teams: teams(4), seed: 1 })));
+  delete old.settings.groupSize;
+  delete old.settings.groupAdvance;
+  assert.equal(parseCompetition(old)!.settings.groupSize, 0);
 });

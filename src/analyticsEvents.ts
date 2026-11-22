@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Nexxus Drako Multimedia
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import type { CompetitionKind } from "./competition.ts";
+
 /**
  * What the app may report to analytics. Every event is built from fixed categories
  * and bucketed counts, so there is no way to put a team name, a player name, a seed
@@ -9,7 +11,7 @@
  */
 
 export type ViewName = "solo" | "comps" | "ratings" | "records";
-export type CompKind = "league" | "cup" | "event";
+export type CompKind = "league" | "cup" | "major" | "worlds";
 export type ExportKind = "match" | "competition" | "ratings" | "backup";
 
 export type AppEvent =
@@ -33,13 +35,13 @@ export function bucketTeams(n: number): string {
   return "65+";
 }
 
-/** A league with playoffs is an event. */
-export function kindOf(kind: "league" | "cup", settings: { playoffSpots: number }): CompKind {
-  return kind === "cup" ? "cup" : settings.playoffSpots > 0 ? "event" : "league";
+/** The format, as an analytics category: a league with playoffs is a major, a group stage and knockout is worlds. */
+export function kindOf(kind: CompetitionKind, settings: { playoffSpots: number }): CompKind {
+  return kind === "cup" ? "cup" : kind === "groups" ? "worlds" : settings.playoffSpots > 0 ? "major" : "league";
 }
 
 const VIEWS: readonly string[] = ["solo", "comps", "ratings", "records"];
-const KINDS: readonly string[] = ["league", "cup", "event"];
+const KINDS: readonly string[] = ["league", "cup", "major", "worlds"];
 const EXPORTS: readonly string[] = ["match", "competition", "ratings", "backup"];
 const BUCKETS: readonly string[] = ["2-4", "5-8", "9-16", "17-64", "65+"];
 

@@ -143,10 +143,10 @@ test("a league can be created, played, and its scorecard and broadcast opened", 
   noInjection(w, "compRoot");
 });
 
-test("an event has playoffs and best-of series, shown in the fixtures", async () => {
+test("a Major has playoffs and best-of series, shown in the fixtures", async () => {
   const w = await load(withTeams(6));
   await click(w, '.tab[data-view="comps"]');
-  await newLeague(w, { kind: "event", name: "Grand Event" });
+  await newLeague(w, { kind: "major", name: "Grand Major" });
   assert.equal($(w, "compPlayoffs").value, "4");
   assert.equal($(w, "compBestOf").value, "3");
   assert.equal($(w, "compFinalBestOf").value, "5");
@@ -162,10 +162,10 @@ test("an event has playoffs and best-of series, shown in the fixtures", async ()
   assert.ok($(w, "matchRoot").querySelectorAll(".seriesbar button").length >= 2);
 });
 
-test("an event takes any number of playoff spots: six of eight, with byes for the top two seeds", async () => {
+test("a Major takes any number of playoff spots: six of eight, with byes for the top two seeds", async () => {
   const w = await load(withTeams(8));
   await click(w, '.tab[data-view="comps"]');
-  await newLeague(w, { kind: "event", name: "Six Spot", extra: () => set(w, "compPlayoffs", 6) });
+  await newLeague(w, { kind: "major", name: "Six Spot", extra: () => set(w, "compPlayoffs", 6) });
   assert.match($(w, "compRoot").textContent, /top 6 to playoffs/);
   assert.match($(w, "compRoot").textContent, /Seeds 1 to 2 get a bye/);
   assert.equal(w.document.querySelectorAll("#compRoot tr.zone").length, 6, "the playoff places are marked");
@@ -177,7 +177,7 @@ test("an event takes any number of playoff spots: six of eight, with byes for th
   assert.equal(comp.byes.length, 2);
   // A spot count bigger than the field is refused.
   await act(w, "comp-back");
-  await newLeague(w, { kind: "event", extra: () => set(w, "compPlayoffs", 9) });
+  await newLeague(w, { kind: "major", extra: () => set(w, "compPlayoffs", 9) });
   assert.match($(w, "compMsg").textContent, /between 2 and 8/);
 });
 
@@ -200,6 +200,49 @@ test("a cup takes any number of teams and names rounds Round of X", async () => 
   $(w, "compMyTeams").querySelector("input").checked = true;
   await submit(w, "compForm");
   assert.match($(w, "compMsg").textContent, /at least two teams/);
+});
+
+test("Worlds: groups of four, the top two through, a knockout, and a world champion", async () => {
+  const w = await load(withTeams(16));
+  await click(w, '.tab[data-view="comps"]');
+  await act(w, "comp-new");
+  set(w, "compKind", "worlds");
+  assert.equal($(w, "compGroupOpts").hidden, false);
+  assert.equal($(w, "compPlayoffWrap").hidden, true);
+  assert.equal($(w, "compSeedWrap").hidden, false);
+  assert.equal($(w, "compGroupSize").value, "4");
+  assert.equal($(w, "compGroupAdvance").value, "2");
+  for (const box of $(w, "compMyTeams").querySelectorAll("input")) box.checked = true;
+  set(w, "compSeeding", "strength");
+  await submit(w, "compForm");
+  assert.match($(w, "compRoot").textContent, /Worlds/);
+  assert.match($(w, "compRoot").textContent, /4 groups, top 2 through/);
+  for (const g of ["Group A", "Group B", "Group C", "Group D"]) assert.match($(w, "compRoot").textContent, new RegExp(g));
+  assert.equal(w.document.querySelectorAll("#compRoot table.tbl").length, 4, "a table for each group");
+  assert.equal(w.document.querySelectorAll("#compRoot tr.zone").length, 8, "two places marked in each group");
+  await act(w, "comp-all");
+  const names = [...w.document.querySelectorAll("#compRoot .roundname")].map((h) => h.textContent);
+  assert.deepEqual(names.slice(0, 3), ["Group stage, round 1", "Group stage, round 2", "Group stage, round 3"]);
+  assert.deepEqual(names.slice(-3), ["Quarter-final", "Semi-final", "Final"]);
+  assert.match($(w, "compRoot").textContent, /World champions/);
+  const comp = JSON.parse(w.localStorage.getItem("kac:v1:competitions"))[0];
+  assert.equal(comp.kind, "groups");
+  assert.equal(comp.groups.length, 4);
+  assert.equal(comp.fixtures.length, 24 + 7, "six games per group, then seven knockout games");
+  noInjection(w, "compRoot");
+  // Too many through from a group is refused with a clear message.
+  await act(w, "comp-back");
+  await act(w, "comp-new");
+  set(w, "compKind", "worlds");
+  for (const box of $(w, "compMyTeams").querySelectorAll("input")) box.checked = true;
+  set(w, "compGroupAdvance", 5);
+  await submit(w, "compForm");
+  assert.match($(w, "compMsg").textContent, /between 1 and 4 can go through/);
+  // A Major with no playoff spots is refused too.
+  set(w, "compKind", "major");
+  set(w, "compPlayoffs", 0);
+  await submit(w, "compForm");
+  assert.match($(w, "compMsg").textContent, /A Major needs playoff spots/);
 });
 
 test("a cup can be seeded by team strength: the strongest are kept apart and get the byes", async () => {

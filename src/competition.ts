@@ -10,7 +10,10 @@ import type { Rng } from "./rng.ts";
 import { playTeamMatch, RULES_VERSION } from "./teamMatch.ts";
 import type { InningsSummary, MatchResult, PlayedMatch } from "./teamMatch.ts";
 
-export type CompetitionKind = "league" | "cup";
+/** "groups" is the Worlds format: a group stage, then a knockout. */
+export type CompetitionKind = "league" | "cup" | "groups";
+/** What a competition is called on the page and in honours. */
+export type Format = "League" | "Cup" | "Major" | "Worlds";
 /** "semi" only appears in competitions saved before playoffs were seeded brackets. */
 export type Stage = "league" | "semi" | "final" | "knockout";
 
@@ -21,6 +24,9 @@ export const MAX_TEAMS = 16;
  * sensible size for browser storage (about 0.6 MB at the ceiling).
  */
 export const MAX_CUP_TEAMS = 1024;
+/** Worlds: teams in all groups together, and teams in one group (a group is a round robin). */
+export const MAX_GROUP_TEAMS = 128;
+export const MAX_GROUP_SIZE = MAX_TEAMS;
 
 export interface Fixture {
   /** Sequential from 0. Also salts the fixture's seed. */
@@ -47,6 +53,10 @@ export interface CompetitionSettings {
    * Counts that are not a power of 2 give the top seeds byes.
    */
   playoffSpots: number;
+  /** Worlds: teams per group (the last groups can have one fewer). 0 for other formats. */
+  groupSize: number;
+  /** Worlds: how many from the top of each group go through to the knockout. 0 for other formats. */
+  groupAdvance: number;
   pointsWin: number;
   pointsTie: number;
   /** Knockout ties (not the final) are decided over a series of this many matches. */
@@ -61,6 +71,8 @@ export const DEFAULT_SETTINGS: CompetitionSettings = {
   strength: false,
   rounds: 1,
   playoffSpots: 0,
+  groupSize: 0,
+  groupAdvance: 0,
   pointsWin: 2,
   pointsTie: 1,
   bestOf: 1,
@@ -94,7 +106,21 @@ export interface Competition {
    * Absent in cups saved before seeding existed.
    */
   bracket?: string[];
+  /** Worlds: team ids in each group, group A first. */
+  groups?: string[][];
   fixtures: Fixture[];
+}
+
+/** League, Cup, Major (a league with playoffs) or Worlds (groups, then a knockout). */
+export function formatOf(comp: Pick<Competition, "kind" | "settings">): Format {
+  if (comp.kind === "cup") return "Cup";
+  if (comp.kind === "groups") return "Worlds";
+  return comp.settings.playoffSpots > 0 ? "Major" : "League";
+}
+
+/** "Group A" to "Group Z", then "Group 27" and on. */
+export function groupName(index: number): string {
+  return `Group ${index < 26 ? String.fromCharCode(65 + index) : index + 1}`;
 }
 
 /** Deterministic 32-bit mix of two integers. */
@@ -146,7 +172,7 @@ export interface NewCompetition {
   settings?: Partial<CompetitionSettings>;
   now?: Date;
   /**
-   * Cup only: team ids from best seed to worst. Teams not listed are seeded after
+   * Cup and Worlds: team ids from best seed to worst. Teams not listed are seeded after
    * them in a random order. Without this the whole draw is random. (League playoffs
    * are seeded by the final table.)
    */
@@ -201,6 +227,29 @@ function addFirstRound(comp: Competition, draw: Draw, round: number): void {
   });
 }
 
+/**
+ * Worlds draw: seeds go into pots of one team per group (pot 1 is the top seeds),
+ * and each group takes one team from each pot, so the strongest are spread out.
+ * Which group a team in a pot lands in is random.
+ */
+export function drawGroups(seedOrder: readonly string[], groupSize: number, rng: Rng): string[][] {
+  const count = Math.ceil(seedOrder.length / groupSize);
+  const groups: string[][] = Array.from({ length: count }, () => []);
+  for (let start = 0; start < seedOrder.length; start += count) {
+    const pot = seedOrder.slice(start, start + count);
+    // A short last pot fills random groups, so the smaller groups are random too.
+    const slots = shuffled(groups.map((_, i) => i), rng).slice(0, pot.length);
+    pot.forEach((id, i) => groups[slots[i]!]!.push(id));
+  }
+  return groups;
+}
+
+/** Fixtures between teams that are both in `ids`, round by round, like a league's. */
+function roundRobinLegs(ids: readonly string[], rounds: 1 | 2): [string, string][][] {
+  const legs = roundRobin(ids);
+  return rounds === 2 ? [...legs, ...legs.map((r) => r.map(([h, a]): [string, string] => [a, h]))] : legs;
+}
+
 export function createCompetition(opts: NewCompetition): Competition {
   const settings: CompetitionSettings = { ...DEFAULT_SETTINGS, ...opts.settings };
   const teams: Team[] = [];
@@ -218,6 +267,22 @@ export function createCompetition(opts: NewCompetition): Competition {
   if (opts.kind === "cup" && teams.length > MAX_CUP_TEAMS) {
     throw new Error(`A cup can have at most ${MAX_CUP_TEAMS} teams.`);
   }
+  if (opts.kind === "groups") {
+    if (teams.length > MAX_GROUP_TEAMS) throw new Error(`Worlds can have at most ${MAX_GROUP_TEAMS} teams.`);
+    const size = settings.groupSize;
+    if (!Number.isInteger(size) || size < 2 || size > MAX_GROUP_SIZE) {
+      throw new Error(`Groups must have between 2 and ${MAX_GROUP_SIZE} teams.`);
+    }
+    const count = Math.ceil(teams.length / size);
+    const smallest = Math.floor(teams.length / count);
+    const adv = settings.groupAdvance;
+    if (!Number.isInteger(adv) || adv < 1 || adv > smallest || count * adv < 2) {
+      throw new Error(`With ${count} group${count === 1 ? "" : "s"} of ${smallest === size ? size : `${smallest} or ${size}`}, between ${count === 1 ? 2 : 1} and ${smallest} can go through from each group.`);
+    }
+  } else {
+    settings.groupSize = 0;
+    settings.groupAdvance = 0;
+  }
   if (opts.kind === "league") {
     const p = settings.playoffSpots;
     if (!Number.isInteger(p) || p === 1 || p < 0 || p > teams.length) {
@@ -225,7 +290,7 @@ export function createCompetition(opts: NewCompetition): Competition {
     }
   } else {
     settings.playoffSpots = 0;
-    settings.rounds = 1;
+    if (opts.kind === "cup") settings.rounds = 1;
   }
   const now = opts.now ?? new Date();
   const stamp = now.toISOString();
@@ -236,7 +301,7 @@ export function createCompetition(opts: NewCompetition): Competition {
     version: 1,
     rulesVersion: RULES_VERSION,
     id: `c-${now.getTime().toString(36)}-${(opts.seed >>> 0).toString(36)}`,
-    name: opts.name.trim().slice(0, 60) || (opts.kind === "league" ? "League" : "Cup"),
+    name: opts.name.trim().slice(0, 60) || formatOf({ kind: opts.kind, settings }),
     kind: opts.kind,
     createdAt: stamp,
     updatedAt: stamp,
@@ -248,25 +313,36 @@ export function createCompetition(opts: NewCompetition): Competition {
     fixtures: [],
   };
 
+  // Seed order (cups and Worlds): the requested seeds first, then everyone else in the random order.
+  const known = new Set(teams.map((t) => t.id));
+  const seedOrder: string[] = [];
+  const placed = new Set<string>();
+  for (const id of [...(opts.seeds ?? []), ...order]) {
+    if (known.has(id) && !placed.has(id)) {
+      placed.add(id);
+      seedOrder.push(id);
+    }
+  }
+
   if (opts.kind === "league") {
-    const legs = roundRobin(order);
-    const all = settings.rounds === 2 ? [...legs, ...legs.map((r) => r.map(([h, a]): [string, string] => [a, h]))] : legs;
-    all.forEach((pairs, i) => {
+    roundRobinLegs(order, settings.rounds).forEach((pairs, i) => {
       for (const [a, b] of pairs) {
         comp.fixtures.push({ id: comp.fixtures.length, round: i + 1, stage: "league", label: `Round ${i + 1}`, a, b });
       }
     });
-  } else {
-    // Seed order: the requested seeds first, then everyone else in the random order.
-    const known = new Set(teams.map((t) => t.id));
-    const seedOrder: string[] = [];
-    const placed = new Set<string>();
-    for (const id of [...(opts.seeds ?? []), ...order]) {
-      if (known.has(id) && !placed.has(id)) {
-        placed.add(id);
-        seedOrder.push(id);
-      }
+  } else if (opts.kind === "groups") {
+    comp.groups = drawGroups(seedOrder, settings.groupSize, rng);
+    // Every group plays its round 1, then its round 2, and so on.
+    const legs = comp.groups.map((g) => roundRobinLegs(g, settings.rounds));
+    const rounds = Math.max(...legs.map((l) => l.length));
+    for (let r = 0; r < rounds; r++) {
+      legs.forEach((l, g) => {
+        for (const [a, b] of l[r] ?? []) {
+          comp.fixtures.push({ id: comp.fixtures.length, round: r + 1, stage: "league", label: `${groupName(g)}, round ${r + 1}`, a, b });
+        }
+      });
     }
+  } else {
     const draw = seededDraw(seedOrder);
     comp.bracket = draw.bracket;
     comp.byes = draw.byes;
@@ -309,10 +385,15 @@ export function oversFaced(s: InningsSummary, config: Config): number {
   return s.allOut ? config.soloOvers : s.balls / config.ballsPerOver;
 }
 
-/** League-stage table: points, then wins, then net run rate, then name. */
-export function standings(comp: Competition): StandingRow[] {
+/**
+ * League-stage table: points, then wins, then net run rate, then name. `ids` limits
+ * it to some teams (a Worlds group), counting only games between them.
+ */
+export function standings(comp: Competition, ids?: readonly string[]): StandingRow[] {
   const rows = new Map<string, StandingRow>();
+  const only = ids ? new Set(ids) : null;
   for (const t of comp.teams) {
+    if (only && !only.has(t.id)) continue;
     rows.set(t.id, {
       teamId: t.id, name: t.name, played: 0, won: 0, lost: 0, tied: 0, points: 0,
       runsFor: 0, oversFor: 0, runsAgainst: 0, oversAgainst: 0, nrr: 0,
@@ -320,6 +401,7 @@ export function standings(comp: Competition): StandingRow[] {
   }
   for (const f of comp.fixtures) {
     if (f.stage !== "league" || !f.result) continue;
+    if (only && !(only.has(f.a) && only.has(f.b))) continue;
     const [i1, i2] = f.result.innings;
     for (const [me, opp] of [[i1, i2], [i2, i1]] as const) {
       const row = rows.get(me.teamId);
@@ -349,12 +431,68 @@ export function standings(comp: Competition): StandingRow[] {
 
 // ---- progress ----
 
+/**
+ * Worlds: the teams going through, best seed first. Every group winner is seeded
+ * above every runner-up, and so on down. Within a place, teams are ranked on points
+ * per game (groups can differ in size by one), then net run rate, then wins.
+ */
+export function groupQualifiers(comp: Competition): string[] {
+  const tables = (comp.groups ?? []).map((g) => standings(comp, g));
+  const out: string[] = [];
+  for (let place = 0; place < comp.settings.groupAdvance; place++) {
+    const rows = tables.map((t) => t[place]).filter((r): r is StandingRow => !!r);
+    const ppg = (r: StandingRow): number => (r.played ? r.points / r.played : 0);
+    rows.sort((a, b) => ppg(b) - ppg(a) || b.nrr - a.nrr || b.won - a.won || a.name.localeCompare(b.name));
+    out.push(...rows.map((r) => r.teamId));
+  }
+  return out;
+}
+
+/**
+ * Keeps teams from the same group apart in the first knockout round where it can:
+ * a first-round tie between group-mates swaps its lower seed with the lower seed of
+ * the nearest tie where the swap leaves neither tie a rematch.
+ */
+export function separateGroups(draw: Draw, groupOf: (id: string) => number): Draw {
+  const bracket = [...draw.bracket];
+  const pairs = bracket.length / 2;
+  const clash = (i: number): boolean => {
+    const a = bracket[2 * i]!;
+    const b = bracket[2 * i + 1]!;
+    return !!a && !!b && groupOf(a) === groupOf(b);
+  };
+  for (let i = 0; i < pairs; i++) {
+    if (!clash(i)) continue;
+    // Nearest other ties first, so the bracket changes as little as possible.
+    const order = Array.from({ length: pairs }, (_, j) => j).filter((j) => j !== i).sort((x, y) => Math.abs(x - i) - Math.abs(y - i) || x - y);
+    for (const j of order) {
+      if (!bracket[2 * j] || !bracket[2 * j + 1]) continue;
+      [bracket[2 * i + 1], bracket[2 * j + 1]] = [bracket[2 * j + 1]!, bracket[2 * i + 1]!];
+      if (!clash(i) && !clash(j)) break;
+      [bracket[2 * i + 1], bracket[2 * j + 1]] = [bracket[2 * j + 1]!, bracket[2 * i + 1]!];
+    }
+  }
+  const ties: [string, string][] = [];
+  for (let i = 0; i < bracket.length; i += 2) if (bracket[i] && bracket[i + 1]) ties.push([bracket[i]!, bracket[i + 1]!]);
+  return { ...draw, bracket, ties };
+}
+
 /** Adds any fixtures that are now due (the playoffs, the next knockout round). Returns true if it added some. */
 export function advance(comp: Competition): boolean {
   if (comp.fixtures.length === 0 || comp.fixtures.some((f) => !f.result)) return false;
   const lastRound = Math.max(...comp.fixtures.map((f) => f.round));
   const knockout = comp.fixtures.filter((f) => f.stage !== "league");
 
+  if (comp.kind === "groups" && knockout.length === 0) {
+    // The group stage is over: seed the knockout from the group tables.
+    const groupIndex = new Map<string, number>();
+    (comp.groups ?? []).forEach((g, i) => g.forEach((id) => groupIndex.set(id, i)));
+    const draw = separateGroups(seededDraw(groupQualifiers(comp)), (id) => groupIndex.get(id) ?? -1);
+    comp.bracket = draw.bracket;
+    comp.byes = draw.byes;
+    addFirstRound(comp, draw, lastRound + 1);
+    return true;
+  }
   if (comp.kind === "league") {
     if (comp.settings.playoffSpots < 2) return false;
     if (knockout.length === 0) {
@@ -401,7 +539,7 @@ export function advance(comp: Competition): boolean {
 export function champion(comp: Competition): string | null {
   if (comp.fixtures.some((f) => !f.result)) return null;
   const final = comp.fixtures.find((f) => f.stage === "final");
-  if (comp.kind === "cup" || comp.settings.playoffSpots > 0) return final?.result?.winner ?? null;
+  if (comp.kind !== "league" || comp.settings.playoffSpots > 0) return final?.result?.winner ?? null;
   return standings(comp)[0]?.teamId ?? null;
 }
 
@@ -569,7 +707,7 @@ function parseResult(x: unknown, ids: ReadonlySet<string>): MatchResult | null {
 export function parseCompetition(x: unknown): Competition | null {
   if (!isObj(x) || x.version !== 1 || !isInt(x.rulesVersion, 0, 1000)) return null;
   if (!isStr(x.id, 100) || !isStr(x.name, 100) || !isStr(x.createdAt, 40) || !isStr(x.updatedAt, 40)) return null;
-  if (x.kind !== "league" && x.kind !== "cup") return null;
+  if (x.kind !== "league" && x.kind !== "cup" && x.kind !== "groups") return null;
   if (!isInt(x.seed, -2147483648, 4294967295)) return null;
   const config = parseConfig(x.config);
   if (!config) return null;
@@ -583,7 +721,12 @@ export function parseCompetition(x: unknown): Competition | null {
   const bestOf = s.bestOf === undefined ? 1 : s.bestOf;
   const finalBestOf = s.finalBestOf === undefined ? 1 : s.finalBestOf;
   if (![1, 3, 5].includes(bestOf as number) || ![1, 3, 5].includes(finalBestOf as number)) return null;
-  const maxTeams = x.kind === "cup" ? MAX_CUP_TEAMS : MAX_TEAMS;
+  // Saved before Worlds existed: no group settings.
+  const groupSize = s.groupSize === undefined ? 0 : s.groupSize;
+  const groupAdvance = s.groupAdvance === undefined ? 0 : s.groupAdvance;
+  if (!isInt(groupSize, 0, MAX_GROUP_SIZE) || !isInt(groupAdvance, 0, MAX_GROUP_SIZE)) return null;
+  if ((x.kind === "groups") !== (groupSize >= 2 && groupAdvance >= 1)) return null;
+  const maxTeams = x.kind === "cup" ? MAX_CUP_TEAMS : x.kind === "groups" ? MAX_GROUP_TEAMS : MAX_TEAMS;
   if (!Array.isArray(x.teams) || x.teams.length < 2 || x.teams.length > maxTeams) return null;
   const teams: Team[] = [];
   for (const t of x.teams) {
@@ -602,12 +745,34 @@ export function parseCompetition(x: unknown): Competition | null {
     if (!x.bracket.every((b) => isStr(b, 100) && (b === "" || ids.has(b)))) return null;
     bracket = x.bracket as string[];
   }
+  let groups: string[][] | undefined;
+  if (x.kind === "groups") {
+    // Every team in exactly one group, no group bigger than the group size, and
+    // every group big enough to send `groupAdvance` teams through.
+    if (!Array.isArray(x.groups) || x.groups.length < 1 || x.groups.length > MAX_GROUP_TEAMS) return null;
+    const placed = new Set<string>();
+    for (const g of x.groups) {
+      if (!Array.isArray(g) || g.length < groupAdvance || g.length > groupSize) return null;
+      for (const id of g) {
+        if (!isStr(id, 100) || !ids.has(id) || placed.has(id)) return null;
+        placed.add(id);
+      }
+    }
+    if (placed.size !== ids.size || x.groups.length * groupAdvance < 2) return null;
+    groups = x.groups as string[][];
+  } else if (x.groups !== undefined) {
+    return null;
+  }
+  const groupOf = new Map<string, number>();
+  groups?.forEach((g, i) => g.forEach((id) => groupOf.set(id, i)));
   if (!Array.isArray(x.fixtures) || x.fixtures.length > 2000) return null;
   const fixtures: Fixture[] = [];
   for (const f of x.fixtures) {
     if (!isObj(f) || !isInt(f.id, 0, 100000) || !isInt(f.round, 1, 1000)) return null;
     if (typeof f.stage !== "string" || !STAGES.includes(f.stage) || !isStr(f.label, 60)) return null;
     if (!isStr(f.a, 100) || !isStr(f.b, 100) || !ids.has(f.a) || !ids.has(f.b) || f.a === f.b) return null;
+    // A group game is between two teams of the same group.
+    if (groups && f.stage === "league" && groupOf.get(f.a) !== groupOf.get(f.b)) return null;
     const fixture: Fixture = { id: f.id, round: f.round, stage: f.stage as Stage, label: f.label, a: f.a, b: f.b };
     if (f.series !== undefined) {
       if (!Array.isArray(f.series) || f.series.length < 2 || f.series.length > 5) return null;
@@ -629,10 +794,11 @@ export function parseCompetition(x: unknown): Competition | null {
   const comp: Competition = {
     version: 1, rulesVersion: x.rulesVersion as number, id: x.id, name: x.name, kind: x.kind,
     createdAt: x.createdAt, updatedAt: x.updatedAt, seed: x.seed, config,
-    settings: { strength: s.strength, rounds: s.rounds, playoffSpots, pointsWin: s.pointsWin, pointsTie: s.pointsTie, bestOf: bestOf as BestOf, finalBestOf: finalBestOf as BestOf },
+    settings: { strength: s.strength, rounds: s.rounds, playoffSpots, groupSize, groupAdvance, pointsWin: s.pointsWin, pointsTie: s.pointsTie, bestOf: bestOf as BestOf, finalBestOf: finalBestOf as BestOf },
     teams, byes: x.byes as string[], fixtures,
   };
   if (bracket) comp.bracket = bracket;
+  if (groups) comp.groups = groups;
   return comp;
 }
 
