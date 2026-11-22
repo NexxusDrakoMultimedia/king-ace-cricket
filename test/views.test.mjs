@@ -46,7 +46,7 @@ const set = (w, id, value) => { $(w, id).value = String(value); $(w, id).dispatc
 const dump = (w) => Object.fromEntries(Array.from({ length: w.localStorage.length }, (_, i) => [w.localStorage.key(i), w.localStorage.getItem(w.localStorage.key(i))]));
 const noInjection = (w, root) => {
   const el = $(w, root);
-  assert.equal(el.querySelector("img, svg:not(.icon), script, iframe"), null, `${root} has injected elements`);
+  assert.equal(el.querySelector("img, svg:not(.icon):not(.chart), script, iframe"), null, `${root} has injected elements`);
   // Check real attributes, not text: an escaped attack string is harmless text.
   for (const node of el.querySelectorAll("*")) {
     for (const a of node.attributes) {
@@ -271,7 +271,7 @@ test("ratings and records fill in from the matches played", async () => {
   await act(w, "comp-all");
 
   await click(w, '.tab[data-view="ratings"]');
-  const rows = w.document.querySelectorAll("#ratingsRoot table.tbl tbody tr");
+  const rows = w.document.querySelectorAll("#ratingsRoot table.tbl")[0].querySelectorAll("tbody tr");
   assert.equal(rows.length, 4);
   const elos = [...rows].map((tr) => Number(tr.querySelectorAll("td.num")[1].textContent));
   assert.ok(elos.every((e, i) => i === 0 || elos[i - 1] >= e), "sorted by Elo");
@@ -281,7 +281,11 @@ test("ratings and records fill in from the matches played", async () => {
   await click(w, '.tab[data-view="records"]');
   assert.ok(w.document.querySelectorAll("#recList li button").length >= 4);
   await act(w, "rec-open", '[data-kind="teams"]');
-  assert.equal(w.document.querySelectorAll("#recordsRoot table.tbl tbody tr").length, 11, "the squad has eleven players");
+  const tables = w.document.querySelectorAll("#recordsRoot table.tbl");
+  assert.equal(tables[tables.length - 1].querySelectorAll("tbody tr").length, 11, "the squad has eleven players");
+  assert.ok($(w, "recordsRoot").querySelector("svg.chart"), "the team page has an Elo chart");
+  assert.match($(w, "recordsRoot").textContent, /Match history/);
+  assert.ok($(w, "recordsRoot").querySelector('[data-action="fx-card"]'), "each past match opens its scorecard");
   assert.match($(w, "recordsRoot").textContent, /Honours/);
   await act(w, "rec-open", '[data-kind="players"]');
   assert.match($(w, "recordsRoot").textContent, /Strike rate/);
@@ -373,4 +377,62 @@ test("the pages ship no inline scripts or styles, and the brand fonts are self-h
   assert.match(fontsCss, /font-family: 'Orbitron'/);
   assert.match(fontsCss, /font-family: 'Exo 2'/);
   for (const l of ["OFL-exo2.txt", "OFL-orbitron.txt"]) assert.match(readFileSync(`${OUT}/fonts/${l}`, "utf8"), /SIL OPEN FONT LICENSE/);
+});
+
+test("a cup shows its bracket, and a tie opens its scorecard with charts", async () => {
+  const w = await load(withTeams(6));
+  await click(w, '.tab[data-view="comps"]');
+  await newLeague(w, { kind: "cup", name: "Bracket Cup" });
+  const svg = () => $(w, "compRoot").querySelector("svg.bracket-svg, .bracket svg");
+  assert.ok(svg(), "the bracket is there from the draw");
+  assert.equal(w.document.querySelectorAll("#compRoot .bracket .tie").length, 4 + 2 + 1, "four quarter-finals, two semi-finals, a final");
+  assert.equal(w.document.querySelectorAll("#compRoot .bracket .tie.bye").length, 2, "two byes for six teams");
+  assert.equal(w.document.querySelectorAll("#compRoot .bracket .tie.open").length, 0, "nothing to open before a ball is bowled");
+  await act(w, "comp-all");
+  const open = w.document.querySelectorAll("#compRoot .bracket .tie.open");
+  assert.equal(open.length, 5, "five games, five scorecards");
+  assert.match($(w, "compRoot").querySelector(".bracket").textContent, /Final/);
+  // Enter on a focused tie opens it, like a click.
+  open[0].dispatchEvent(new w.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  await tick();
+  assert.ok($(w, "matchRoot").querySelectorAll("svg.chart").length >= 3, "worm, Manhattan and ball mix");
+  assert.match($(w, "matchRoot").textContent, /Worm/);
+  assert.match($(w, "matchRoot").textContent, /Manhattan/);
+  assert.ok($(w, "compRoot").querySelector(".statgrid"), "competition stats");
+  assert.ok($(w, "compRoot").querySelectorAll("svg.chart").length >= 3, "bracket, histogram and chase map");
+  noInjection(w, "matchRoot");
+  noInjection(w, "compRoot");
+});
+
+test("a league shows its points chart, and a Major's bracket appears when the league stage ends", async () => {
+  const w = await load(withTeams(6));
+  await click(w, '.tab[data-view="comps"]');
+  await newLeague(w, { kind: "major", name: "Chart Major" });
+  assert.match($(w, "compRoot").textContent, /The bracket is drawn when the league stage ends/);
+  assert.equal($(w, "compRoot").querySelector(".bracket"), null);
+  await act(w, "comp-all");
+  assert.ok($(w, "compRoot").querySelector(".bracket"), "playoff bracket");
+  assert.match($(w, "compRoot").textContent, /League points/);
+  assert.match($(w, "compRoot").textContent, /Points race/);
+});
+
+test("ratings show Elo charts and recent matches", async () => {
+  const w = await load(withTeams(5));
+  await click(w, '.tab[data-view="comps"]');
+  await newLeague(w, { name: "Elo League" });
+  await act(w, "comp-all");
+  await click(w, '.tab[data-view="ratings"]');
+  assert.match($(w, "ratingsRoot").textContent, /Elo against the 1500 starting line/);
+  assert.match($(w, "ratingsRoot").textContent, /Elo race/);
+  assert.match($(w, "ratingsRoot").textContent, /Recent matches/);
+  assert.ok($(w, "ratingsRoot").querySelectorAll('[data-action="fx-card"]').length > 0);
+  noInjection(w, "ratingsRoot");
+});
+
+test("a solo innings draws its charts as it goes", async () => {
+  const w = await load();
+  await click(w, '.tab[data-view="solo"]');
+  assert.equal($(w, "charts").querySelector("svg"), null, "nothing before the first ball");
+  await click(w, "#btnInnings");
+  assert.ok($(w, "charts").querySelectorAll("svg.chart").length >= 3);
 });

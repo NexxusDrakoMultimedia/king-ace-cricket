@@ -10,6 +10,7 @@ import type { PlayedMatch } from "../src/teamMatch.ts";
 import { track } from "./analytics.ts";
 import { icon } from "./icons.ts";
 import type { IconName } from "./icons.ts";
+import { matchCharts } from "./insightview.ts";
 import { esc, renderScorebook } from "./render.ts";
 import { resultLine, teamName } from "./compview.ts";
 import { $, findCompetition, formatDate } from "./state.ts";
@@ -117,6 +118,7 @@ function drawCard(): string {
       <p><b>${gameResult(g)}</b></p><p class="hint">${potmLine(g)}</p>
       <p class="hint">${v!.fixture.result && v!.games.length > 1 ? `Series: ${esc(v!.fixture.result.margin)}` : ""}</p>
       <div class="row"><button type="button" class="primary" data-action="mv-switch" data-mode="watch">Watch broadcast</button></div></div>
+    ${matchCharts(g.result.innings.map((inn, i) => ({ team: teamOf(comp, inn.teamId).name, log: g.logs![i]! })), { ballsPerOver: comp.config.ballsPerOver, totalOvers: comp.config.soloOvers })}
     ${sheets}`;
 }
 

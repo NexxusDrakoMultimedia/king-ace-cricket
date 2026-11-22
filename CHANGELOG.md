@@ -9,6 +9,10 @@ The live site at `kac.nexxusdrako.au` is deployed from `master` as changes land,
 First public release (planned as 0.1.0).
 
 ### Added
+- **Charts and stats everywhere**: every scorecard has a worm (runs ball by ball, wickets marked, the target in a chase), a Manhattan (runs per over) and a ball mix (dots, singles, fours, sixes, wickets); solo and 1v1 matches draw the same charts as they go.
+- **Bracket viewer** for Cups, Majors and Worlds: a tree of every tie with byes, scores and winners, the rounds still to come, and a click or Enter on a finished tie to open its scorecard.
+- **Competition stats**: averages, chase success, highest and lowest totals, biggest win and closest finish, a histogram of innings scores, a chase map of every match, and for leagues a points chart and a points race.
+- **Elo and match history**: an Elo chart and a full match history (opponent, score, margin, Elo moved, scorecard) on every team's page; Ratings gains an Elo-against-1500 chart, an Elo race for the top teams, and recent matches with each side's Elo swing.
 - **Worlds**: a World Cup-style format. Teams are drawn into groups of a size you pick, one seed from each pot per group, and the top of each group go through to a knockout. Group winners are seeded first, and teams from the same group are kept apart in the first knockout round.
 - **Rules** in [rules.md](rules.md): six-ball overs, a six-card hand per over, one card played per ball. A bowler's win or a tie is a dot ball, wickets come only from Kings, and a Jack, Queen or King neutralises a King. A solo table tuned to T20 scoring (a red Queen is six, a black Queen is four).
 - **Solo innings** on a paper-style scorebook, with saved matches, custom and generated teams, and JSON export and import.

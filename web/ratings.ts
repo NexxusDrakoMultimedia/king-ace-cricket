@@ -1,14 +1,21 @@
 // SPDX-FileCopyrightText: 2026 Nexxus Drako Multimedia
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { matchHistory, ratedGames } from "../src/insights.ts";
 import { computeRatings, ratingsToCsv } from "../src/ratings.ts";
 import { track } from "./analytics.ts";
+import { eloBars, eloRace, recentMatches } from "./insightview.ts";
 import { esc } from "./render.ts";
 import { $, download, everyCompetition } from "./state.ts";
 
 /** Elo and Glicko ratings, computed from every completed match in every competition. */
 export function renderRatings(): void {
-  const rows = computeRatings(everyCompetition());
+  const comps = everyCompetition();
+  const rows = computeRatings(comps);
+  const history = matchHistory(comps);
+  const charts = rows.length
+    ? `<div class="charts">${eloBars(rows)}${eloRace(history, rows)}</div>${recentMatches(ratedGames(comps))}`
+    : "";
   const body = rows
     .map(
       (r, i) => `<tr><td class="num">${i + 1}</td><td>${esc(r.name)}</td><td class="num"><b>${Math.round(r.elo)}</b></td>
@@ -22,6 +29,7 @@ export function renderRatings(): void {
     ${rows.length
       ? `<div class="scroll"><table class="tbl"><thead><tr><th class="num">#</th><th>Team</th><th class="num">Elo</th><th class="num">Glicko</th><th class="num">Played</th><th class="num">W-L-T</th></tr></thead><tbody>${body}</tbody></table></div>`
       : `<div class="panel"><p>No ratings yet. Play some matches in a League, Cup, Major or Worlds and every team's Elo and Glicko rating will appear here.</p></div>`}
+    ${charts}
     <p class="hint">Everyone starts on 1500. Elo moves match by match (K of 32, a tie counts as half a win). Glicko-1 treats each round of a competition as one rating period, and the ± is its uncertainty: it shrinks as a team plays more. Ratings are worked out from the results, so deleting a competition removes its effect.</p>`;
 }
 

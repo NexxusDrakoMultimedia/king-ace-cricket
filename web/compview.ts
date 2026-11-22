@@ -3,7 +3,9 @@
 
 import { champion, formatOf, groupName, isComplete, standings, teamOf } from "../src/competition.ts";
 import type { Competition, Fixture } from "../src/competition.ts";
+import { renderBracket } from "./bracket.ts";
 import { icon } from "./icons.ts";
+import { competitionStats } from "./insightview.ts";
 import { esc } from "./render.ts";
 
 /** Shared renderers for a competition: tags, standings, fixtures. */
@@ -122,5 +124,7 @@ export function renderBody(comp: Competition): string {
     table = comp.groups.map((g, i) => `<h3>${esc(groupName(i))}</h3>${renderStandings(comp, g)}`).join("") +
       `<p class="hint">The top ${adv === 1 ? "team" : adv} of each group go${adv === 1 ? "es" : ""} through to the knockout, ${through} in all. Group winners are seeded first, then ${adv > 1 ? "runners-up, and so on" : "by points per game"}, and teams from the same group are kept apart in the first knockout round where they can be.${groupByes === 1 ? " The top seed gets a bye to the second round." : groupByes > 1 ? ` Seeds 1 to ${groupByes} get a bye to the second round.` : ""}</p>`;
   }
-  return `${renderChampion(comp)}${table}<h3>${comp.kind === "cup" ? "Draw and results" : "Fixtures and results"}</h3>${renderFixtures(comp)}`;
+  const hasKnockout = comp.kind !== "league" || spots > 0;
+  const bracket = hasKnockout ? `<h3>Bracket</h3>${renderBracket(comp)}` : "";
+  return `${renderChampion(comp)}${table}${bracket}${competitionStats(comp)}<h3>${comp.kind === "cup" ? "Draw and results" : "Fixtures and results"}</h3>${renderFixtures(comp)}`;
 }

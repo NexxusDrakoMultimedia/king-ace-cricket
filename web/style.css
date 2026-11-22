@@ -275,3 +275,94 @@ ol.players { margin: 0; padding-left: var(--space-6); display: grid; gap: var(--
 .consent h2 { margin-bottom: var(--space-1); }
 .consent p { margin: 0; }
 .consent .row { margin-top: var(--space-2); }
+
+/* ---- charts: drawn from the tokens, so they follow the light and dark themes.
+   Series differ by line pattern as well as colour. ---- */
+.charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: var(--space-4) var(--space-6); }
+.charts > .eyebrow { grid-column: 1 / -1; }
+.figure { margin: var(--space-2) 0 var(--space-4); }
+.figure figcaption { font: 600 12px/16px var(--font-sans); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-muted); margin-bottom: var(--space-1); }
+.chart { display: block; width: 100%; height: auto; }
+.chart.fixed { width: auto; max-width: none; }
+.chart.square { max-width: 360px; }
+.chart text { fill: var(--ink-muted); font: 11px var(--font-sans); }
+.chart .grid { stroke: var(--line); stroke-opacity: 0.35; stroke-width: 1; }
+.chart .axis { stroke: var(--line); stroke-width: 1; }
+.chart .ref { stroke: var(--ink-muted); stroke-width: 1; stroke-dasharray: 2 4; fill: none; }
+.chart text.ref { stroke: none; }
+.chart .line { fill: none; stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.chart .mark { fill: var(--danger); stroke: var(--surface); stroke-width: 1.5; }
+.chart .endlabel { font-weight: 600; }
+.chart .rowlabel { fill: var(--ink); }
+.chart .val { fill: var(--ink); font-weight: 600; }
+.line.s1, .bar.s1, .sw.s1 { stroke: var(--accent); }
+.line.s2, .sw.s2 { stroke: var(--ink); }
+.line.s3, .sw.s3 { stroke: var(--accent); stroke-dasharray: 8 5; }
+.line.s4, .sw.s4 { stroke: var(--ink); stroke-dasharray: 8 5; }
+.line.s5, .sw.s5 { stroke: var(--accent); stroke-dasharray: 2 5; }
+.line.s6, .sw.s6 { stroke: var(--ink); stroke-dasharray: 2 5; }
+.chart .endlabel.s1, .chart .endlabel.s3, .chart .endlabel.s5 { fill: var(--accent); }
+.chart .endlabel.s2, .chart .endlabel.s4, .chart .endlabel.s6 { fill: var(--ink); }
+.bar.s1 { fill: var(--accent); stroke: none; }
+.bar.s2 { fill: var(--ink); fill-opacity: 0.7; stroke: none; }
+.bar.s3, .bar.s4, .bar.s5, .bar.s6 { fill: var(--ink-muted); stroke: none; }
+.legend { list-style: none; margin: var(--space-1) 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); font-size: 13px; color: var(--ink-muted); }
+.legend li { display: flex; align-items: center; gap: var(--space-2); }
+.sw { display: inline-block; width: 24px; height: 0; border-top: 3px solid; border-top-color: inherit; }
+.sw.s1, .sw.s3, .sw.s5 { border-top-color: var(--accent); }
+.sw.s2, .sw.s4, .sw.s6 { border-top-color: var(--ink); }
+.sw.s3, .sw.s4 { border-top-style: dashed; }
+.sw.s5, .sw.s6 { border-top-style: dotted; }
+.sw.seg { width: 14px; height: 14px; border: 0; }
+.seg.m0 { fill: var(--ink-muted); fill-opacity: 0.35; background: color-mix(in srgb, var(--ink-muted) 35%, transparent); }
+.seg.m1 { fill: var(--accent); fill-opacity: 0.3; background: color-mix(in srgb, var(--accent) 30%, transparent); }
+.seg.m2, .seg.m3 { fill: var(--accent); fill-opacity: 0.5; background: color-mix(in srgb, var(--accent) 50%, transparent); }
+.seg.m4, .seg.m5 { fill: var(--accent); fill-opacity: 0.75; background: color-mix(in srgb, var(--accent) 75%, transparent); }
+.seg.m6 { fill: var(--accent); background: var(--accent); }
+.seg.mw { fill: var(--danger); background: var(--danger); }
+.chart .segtext { fill: var(--ink); font-weight: 700; }
+.chart .segtext.m6 { fill: var(--on-gold); }
+.chart .segtext.mw { fill: #000; }
+.dotpt { stroke-width: 1.5; }
+.dotpt.chased { fill: var(--accent); stroke: var(--surface); }
+.dotpt.defended { fill: var(--surface); stroke: var(--ink); }
+.dotpt.tied { fill: var(--ink-muted); stroke: var(--surface); }
+.sw.dotpt { width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid; }
+.sw.dotpt.chased { background: var(--accent); border-color: var(--surface); }
+.sw.dotpt.defended { background: var(--surface); border-color: var(--ink); }
+.sw.dotpt.tied { background: var(--ink-muted); border-color: var(--surface); }
+.facts { margin: 0 0 var(--space-4); padding-left: var(--space-6); display: grid; gap: var(--space-1); }
+
+/* ---- the bracket ---- */
+.bracket { padding-bottom: var(--space-2); }
+.bracket .box { fill: var(--surface); stroke: var(--line); stroke-width: 1.5; }
+.bracket .rowbg { fill: transparent; }
+.bracket .tie.open { cursor: pointer; }
+.bracket .tie.open:hover .box, .bracket .tie:focus-visible .box { stroke: var(--accent); stroke-width: 2.5; }
+.bracket .tie:focus-visible { outline: none; }
+.bracket .split { stroke: var(--line); stroke-width: 1; }
+.bracket .link { fill: none; stroke: var(--line); stroke-width: 1.5; }
+.bracket .roundhead { fill: var(--accent); font: 400 12px var(--font-display); text-transform: uppercase; letter-spacing: 0.06em; }
+.bracket .tname { fill: var(--ink); font: 600 12px var(--font-sans); }
+.bracket .tscore { fill: var(--ink-muted); font: 12px var(--font-sans); }
+.bracket .won .tname { fill: var(--accent); }
+.bracket .won .tscore { fill: var(--ink); font-weight: 700; }
+.bracket .lost .tname, .bracket .lost .tscore { fill: var(--ink-muted); font-weight: 400; }
+.bracket .empty .tname { fill: var(--ink-muted); font-weight: 400; }
+.bracket .winbar { fill: var(--accent); }
+.bracket .bye .box { stroke-dasharray: 4 3; }
+
+/* ---- match history ---- */
+.rchip { display: inline-block; min-width: 20px; text-align: center; font: 700 12px/18px var(--font-sans); border: 1.5px solid var(--line); border-radius: var(--radius-sm); }
+.rchip.W { color: var(--success); border-color: var(--success); }
+.rchip.L { color: var(--danger); border-color: var(--danger); }
+.rchip.T { color: var(--warning); border-color: var(--warning); }
+.tbl td small { display: block; }
+.tbl td.winner { font-weight: 700; color: var(--accent); }
+
+/* On a phone, keep chart labels readable: charts keep a minimum width and scroll sideways inside their figure. */
+@media (max-width: 640px) {
+  .figure { overflow-x: auto; }
+  .chart:not(.fixed):not(.square) { min-width: 560px; }
+}
+@media (max-width: 640px) { .ladder { grid-template-columns: repeat(10, minmax(0, 1fr)); } }

@@ -15,6 +15,7 @@ import { initCompetitions, regionOptions, renderCompetitions, handleCompAction }
 import { closeMatch, handleMatchAction, openMatch } from "./matchview.ts";
 import { handleRatingAction, renderRatings } from "./ratings.ts";
 import { handleRecordAction, initRecords, renderRecords } from "./records.ts";
+import { matchCharts } from "./insightview.ts";
 import { esc, renderScorebook, renderStage } from "./render.ts";
 import {
   $, compStore, data, download, guard, kv, loadData, matchStore, persistent, randomSeed, setStatus, teamStore,
@@ -130,6 +131,10 @@ function draw(): void {
       return renderScorebook(book, { ...info, finished: i < inn || done });
     })
     .join("");
+  $("charts").innerHTML = matchCharts(
+    match.innings.slice(0, inn + 1).map((r, i) => ({ team: r.battingTeam.name, log: i < inn ? r.log : r.log.slice(0, pos) })),
+    { ballsPerOver: match.config.ballsPerOver, totalOvers: match.config.soloOvers },
+  );
   $("summary").textContent = summaryText();
   for (const id of ["btnBall", "btnOver", "btnInnings", "btnAuto"]) ($(id) as HTMLButtonElement).disabled = done;
   if (done) stopAuto();
@@ -441,6 +446,15 @@ function wire(): void {
     input.value = "";
   });
   $("matchDialog").addEventListener("close", closeMatch);
+
+  // Bracket ties are focusable SVG groups: Enter or Space opens them like a click.
+  document.addEventListener("keydown", (e) => {
+    const t = e.target as Element | null;
+    if ((e.key === "Enter" || e.key === " ") && t instanceof SVGElement && t.getAttribute("role") === "button" && t.dataset.action) {
+      e.preventDefault();
+      t.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    }
+  });
 
   document.addEventListener("click", async (e) => {
     const t = e.target as HTMLElement;
