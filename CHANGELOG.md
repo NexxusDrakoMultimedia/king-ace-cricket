@@ -31,7 +31,7 @@ First public release (planned as 0.1.0).
 - Project files: agent guide, contributing guide, code of conduct, security policy, contributors list, privacy page and release process.
 
 ### Fixed
-- Dialogs, including the scorecard, have a close button pinned to the top (and close on a click outside them), so you no longer have to scroll to the bottom to close one.
+- Dialogs, including the scorecard, have a tidy square close button pinned to the top (and close on a click outside them), so you no longer have to scroll to the bottom to close one.
 - Bracket boxes drew at the wrong height, because a class name clashed with the scorebook's styles. The charts and bracket use their own class names now.
 - `wrangler deploy` builds the site itself if the host's build command was left blank, instead of failing on a missing `dist/` folder.
 

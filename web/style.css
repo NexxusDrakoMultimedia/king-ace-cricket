@@ -367,10 +367,12 @@ ol.players { margin: 0; padding-left: var(--space-6); display: grid; gap: var(--
 }
 @media (max-width: 640px) { .ladder { grid-template-columns: repeat(10, minmax(0, 1fr)); } }
 
-/* ---- a close button pinned to the top of every dialog ---- */
-.dialog-bar { position: sticky; top: calc(-1 * var(--space-4)); z-index: 3; display: flex; justify-content: flex-end; margin: calc(-1 * var(--space-4)) calc(-1 * var(--space-6)) 0; padding: var(--space-2) var(--space-4) 0; height: 0; overflow: visible; }
-.dialog-bar button { background: var(--surface); border: 2px solid var(--accent); color: var(--accent); padding: var(--space-1); line-height: 0; position: relative; top: var(--space-2); }
-.dialog-bar button:hover { background: var(--maroon); color: var(--gold); }
+/* ---- a close button pinned to the top of every dialog: a zero-height sticky row, so it takes no room
+   and stays in view while the dialog scrolls; the button itself sits in the dialog's padding ---- */
+.dialog-bar { position: sticky; top: var(--space-2); z-index: 3; height: 0; }
+.dialog-bar button { position: absolute; top: 0; right: calc(-1 * var(--space-4)); display: grid; place-items: center; width: 36px; height: 36px; padding: 0; background: var(--surface); border: 2px solid var(--accent); border-radius: var(--radius-md); color: var(--accent); }
+.dialog-bar button:hover { background: var(--maroon); color: var(--gold); border-color: var(--gold); }
+dialog > h2:first-of-type, dialog > #matchRoot > .eyebrow, dialog > form > h2:first-of-type { padding-right: 44px; }
 
 /* ---- the record books (leaderboards), after Wisden's Almanack ---- */
 .almanacks { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr)); gap: var(--space-4) var(--space-6); }
