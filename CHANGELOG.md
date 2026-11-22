@@ -9,6 +9,7 @@ The live site at `kac.nexxusdrako.au` is deployed from `master` as changes land,
 First public release (planned as 0.1.0).
 
 ### Added
+- **Leaderboards** in Records, laid out like Wisden's Almanack: a roll of honour; batting (most runs, highest scores, best average, best and fastest strike rates, sixes, fours, fifties and hundreds, ducks, Player of the Match); bowling (most wickets, best figures, economy, maidens); and teams (highest and lowest totals, biggest and narrowest wins, titles, wins, win percentage). Ties share a place, averages and rates have fair qualifications, and every name links to its profile.
 - **Charts and stats everywhere**: every scorecard has a worm (runs ball by ball, wickets marked, the target in a chase), a Manhattan (runs per over) and a ball mix (dots, singles, fours, sixes, wickets); solo and 1v1 matches draw the same charts as they go.
 - **Bracket viewer** for Cups, Majors and Worlds: a tree of every tie with byes, scores and winners, the rounds still to come, and a click or Enter on a finished tie to open its scorecard.
 - **Competition stats**: averages, chase success, highest and lowest totals, biggest win and closest finish, a histogram of innings scores, a chase map of every match, and for leagues a points chart and a points race.
@@ -30,6 +31,8 @@ First public release (planned as 0.1.0).
 - Project files: agent guide, contributing guide, code of conduct, security policy, contributors list, privacy page and release process.
 
 ### Fixed
+- Dialogs, including the scorecard, have a close button pinned to the top (and close on a click outside them), so you no longer have to scroll to the bottom to close one.
+- Bracket boxes drew at the wrong height, because a class name clashed with the scorebook's styles. The charts and bracket use their own class names now.
 - `wrangler deploy` builds the site itself if the host's build command was left blank, instead of failing on a missing `dist/` folder.
 
 ### Removed

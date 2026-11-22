@@ -89,8 +89,8 @@ export function renderBracket(comp: Competition): string {
       const attrs = playable
         ? ` data-action="fx-card" data-comp="${esc(comp.id)}" data-fx="${t.fixtureId}" role="button" tabindex="0" aria-label="${esc(`Open scorecard: ${tieLabel(comp, t)}`)}"`
         : ` role="group" aria-label="${esc(tieLabel(comp, t))}"`;
-      boxes += `<g class="${cls}"${attrs}><rect class="box" x="${x}" y="${y}" width="${BOX_W}" height="${BOX_H}"/>
-        ${row(comp, t, "a", x, y)}${row(comp, t, "b", x, y + ROW_H)}<line class="split" x1="${x}" x2="${x + BOX_W}" y1="${y + ROW_H}" y2="${y + ROW_H}"/></g>`;
+      boxes += `<g class="${cls}"${attrs}><rect class="tbox" x="${x}" y="${y}" width="${BOX_W}" height="${BOX_H}"/>
+        ${row(comp, t, "a", x, y)}${row(comp, t, "b", x, y + ROW_H)}<line class="tsplit" x1="${x}" x2="${x + BOX_W}" y1="${y + ROW_H}" y2="${y + ROW_H}"/></g>`;
       if (c > 0) {
         const prev = centres[c - 1]!;
         const x1 = 8 + (c - 1) * COL_W + BOX_W;

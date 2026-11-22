@@ -10,17 +10,20 @@ import type { RatingRow } from "../src/ratings.ts";
 import { icon } from "./icons.ts";
 import type { IconName } from "./icons.ts";
 import { eloChart, matchHistoryTable } from "./insightview.ts";
+import { renderLeaderboards } from "./leaderboards.ts";
 import { esc } from "./render.ts";
 import { $, data, everyCompetition } from "./state.ts";
 
 /** Records: a profile with honours for every team, player and competition, built from the matches played. */
 
-type Tab = "teams" | "players" | "competitions";
+type Tab = "teams" | "players" | "competitions" | "leaderboards";
 interface Selected { kind: Tab; id: string }
 
 let tab: Tab = "teams";
 let selected: Selected | null = null;
 let query = "";
+/** Set when a profile was opened from the leaderboards, so Back returns there. */
+let backTo: Tab | null = null;
 let cache: { version: number; profiles: Profiles; ratings: Map<string, RatingRow>; history: Map<string, HistoryEntry[]> } | null = null;
 
 function loaded(): NonNullable<typeof cache> {
@@ -130,14 +133,16 @@ export function renderRecords(): void {
       if (c) detail = compDetail(c, profiles);
     }
   }
-  const tabs = (["teams", "players", "competitions"] as const)
+  const tabs = (["teams", "players", "competitions", "leaderboards"] as const)
     .map((t) => `<button type="button" data-action="rec-tab" data-kind="${t}" ${t === tab && !detail ? 'aria-current="true"' : ""}>${t}</button>`)
     .join("");
   root.innerHTML = `<div class="head"><div><p class="eyebrow">Profiles and honours</p><h2>Records</h2></div></div>
     <div class="tabs2" role="group" aria-label="Records">${tabs}</div>
     ${detail
       ? `<button type="button" class="ghost" data-action="rec-back">Back to ${tab}</button><div class="panel">${detail}</div>`
-      : `<label class="search">Search<input id="recSearch" type="search" value="${esc(query)}" autocomplete="off"></label><ul id="recList" class="list">${listHtml()}</ul>`}`;
+      : tab === "leaderboards"
+        ? renderLeaderboards(profiles)
+        : `<label class="search">Search<input id="recSearch" type="search" value="${esc(query)}" autocomplete="off"></label><ul id="recList" class="list">${listHtml()}</ul>`}`;
 }
 
 export function initRecords(): void {
@@ -154,13 +159,18 @@ export function handleRecordAction(action: string, el: HTMLElement): boolean {
   if (action === "rec-tab") {
     tab = (el.dataset.kind as Tab) ?? "teams";
     selected = null;
+    backTo = null;
     query = "";
   } else if (action === "rec-open") {
+    if (tab === "leaderboards") backTo = "leaderboards";
+    else if (!selected) backTo = null;
     selected = { kind: el.dataset.kind as Tab, id: el.dataset.id ?? "" };
     tab = selected.kind;
     $("viewRecords").scrollIntoView?.();
   } else if (action === "rec-back") {
     selected = null;
+    if (backTo) tab = backTo;
+    backTo = null;
   }
   renderRecords();
   return true;

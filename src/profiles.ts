@@ -35,6 +35,56 @@ export const emptyStats = (): BatStats => ({
   innings: 0, notOuts: 0, runs: 0, balls: 0, highest: 0, highestNotOut: false, fifties: 0, hundreds: 0, ducks: 0, fours: 0, sixes: 0, potm: 0,
 });
 
+/** Bowling, as the scorebook credits it (who bowls is a rotation of the tail and does not change play). */
+export interface BowlStats {
+  innings: number;
+  balls: number;
+  maidens: number;
+  runs: number;
+  wickets: number;
+  /** Best figures in an innings: most wickets, then fewest runs. Null before a wicket is taken. */
+  best: { wickets: number; runs: number } | null;
+}
+
+export const emptyBowl = (): BowlStats => ({ innings: 0, balls: 0, maidens: 0, runs: 0, wickets: 0, best: null });
+
+/** A batting innings worth keeping for the record books (20 runs or more). */
+export interface InningsEntry {
+  key: string; // the player
+  runs: number;
+  balls: number;
+  notOut: boolean;
+  /** The side bowled against. */
+  oppId: string;
+  label: string;
+  compId: string;
+  compName: string;
+}
+
+/** One bowler's figures in one innings. */
+export interface BowlEntry {
+  key: string;
+  wickets: number;
+  runs: number;
+  balls: number;
+  maidens: number;
+  oppId: string; // the side that was batting
+  label: string;
+  compId: string;
+  compName: string;
+}
+
+/** One game: both innings in batting order, for team records. */
+export interface MatchEntry {
+  compId: string;
+  compName: string;
+  label: string;
+  ballsPerOver: number;
+  innings: [MatchInnings, MatchInnings];
+  winner: string | null;
+}
+export interface MatchInnings { teamId: string; runs: number; wickets: number; balls: number; allOut: boolean }
+
 export const average = (s: BatStats): number | null => (s.innings - s.notOuts > 0 ? s.runs / (s.innings - s.notOuts) : null);
 export const strikeRate = (s: BatStats): number | null => (s.balls > 0 ? (s.runs / s.balls) * 100 : null);
 
@@ -57,6 +107,7 @@ export interface PlayerRecord {
   name: string;
   slot: number;
   stats: BatStats;
+  bowling: BowlStats;
   honours: Honour[];
 }
 
@@ -106,11 +157,19 @@ export interface Profiles {
   teams: Map<string, TeamRecord>;
   players: Map<string, PlayerRecord>;
   competitions: Map<string, CompetitionRecord>;
+  /** Every batting innings of 20 or more, every bowling spell, and every game, for the leaderboards. */
+  innings: InningsEntry[];
+  bowlSpells: BowlEntry[];
+  matches: MatchEntry[];
 }
 
+interface PlayerAcc { teamId: string; slot: number; name: string; stats: BatStats; bowl: BowlStats }
+
 interface CompStats {
-  players: Map<string, { teamId: string; slot: number; name: string; stats: BatStats }>;
-  games: { fixture: Fixture; winner: string | null; innings: { teamId: string; runs: number; wickets: number; balls: number }[] }[];
+  players: Map<string, PlayerAcc>;
+  games: { fixture: Fixture; winner: string | null; innings: { teamId: string; runs: number; wickets: number; balls: number; allOut: boolean }[] }[];
+  innings: Omit<InningsEntry, "compId" | "compName">[];
+  bowlSpells: Omit<BowlEntry, "compId" | "compName">[];
   highest: { teamId: string; runs: number; label: string } | null;
   biggestWin: { teamId: string; runs: number; label: string } | null;
   finalPotm: { teamId: string; slot: number } | null;
@@ -122,26 +181,51 @@ function compStats(comp: Competition): CompStats {
   const cacheKey = `${comp.id}|${comp.updatedAt}|${comp.fixtures.filter((f) => f.result).length}`;
   const hit = statsCache.get(cacheKey);
   if (hit) return hit;
-  const out: CompStats = { players: new Map(), games: [], highest: null, biggestWin: null, finalPotm: null };
+  const out: CompStats = { players: new Map(), games: [], innings: [], bowlSpells: [], highest: null, biggestWin: null, finalPotm: null };
   for (const f of comp.fixtures) {
     if (!f.result) continue;
     const { games } = replayFixture(comp, f);
     games.forEach((g, gi) => {
       const books = g.result.innings.map((inn, i) => ({
         teamId: inn.teamId,
-        scorebook: buildScorebook(teamOf(comp, inn.teamId), g.logs![i]!, comp.config),
+        scorebook: buildScorebook(teamOf(comp, inn.teamId), g.logs![i]!, comp.config, teamOf(comp, g.result.innings[1 - i]!.teamId)),
       }));
       const potm = playerOfMatch(books, g.result.winner);
+      const gameLabel = f.label;
+      const rec = (teamId: string, slot: number, name: string): PlayerAcc => {
+        const key = playerKey(teamId, slot);
+        let r = out.players.get(key);
+        if (!r) {
+          r = { teamId, slot, name, stats: emptyStats(), bowl: emptyBowl() };
+          out.players.set(key, r);
+        }
+        return r;
+      };
+      books.forEach(({ teamId, scorebook }, bi) => {
+        const oppId = books[1 - bi]!.teamId;
+        // The bowling side's figures for this innings.
+        for (const bw of scorebook.bowlers) {
+          const r = rec(oppId, bw.no - 1, bw.name);
+          const bs = r.bowl;
+          bs.innings++;
+          bs.balls += bw.balls;
+          bs.maidens += bw.maidens;
+          bs.runs += bw.runs;
+          bs.wickets += bw.wickets;
+          if (bw.wickets > 0 && (!bs.best || bw.wickets > bs.best.wickets || (bw.wickets === bs.best.wickets && bw.runs < bs.best.runs))) {
+            bs.best = { wickets: bw.wickets, runs: bw.runs };
+          }
+          out.bowlSpells.push({ key: playerKey(oppId, bw.no - 1), wickets: bw.wickets, runs: bw.runs, balls: bw.balls, maidens: bw.maidens, oppId: teamId, label: gameLabel });
+        }
+      });
       for (const { teamId, scorebook } of books) {
+        const oppId = books.find((x) => x.teamId !== teamId)!.teamId;
         for (const b of scorebook.batters) {
           if (!b.entered) continue;
           const key = playerKey(teamId, b.no - 1);
-          let rec = out.players.get(key);
-          if (!rec) {
-            rec = { teamId, slot: b.no - 1, name: b.name, stats: emptyStats() };
-            out.players.set(key, rec);
-          }
-          const s = rec.stats;
+          const rec2 = rec(teamId, b.no - 1, b.name);
+          if (b.runs >= 20) out.innings.push({ key, runs: b.runs, balls: b.balls, notOut: !b.out, oppId, label: gameLabel });
+          const s = rec2.stats;
           s.innings++;
           if (!b.out) s.notOuts++;
           s.runs += b.runs;
@@ -160,7 +244,7 @@ function compStats(comp: Competition): CompStats {
       if (potm) out.players.get(playerKey(potm.teamId, potm.slot))!.stats.potm++;
       if (f.stage === "final" && gi === games.length - 1 && potm) out.finalPotm = { teamId: potm.teamId, slot: potm.slot };
       const label = `${f.label}: ${teamOf(comp, f.a).name} v ${teamOf(comp, f.b).name}`;
-      const innings = g.result.innings.map((i) => ({ teamId: i.teamId, runs: i.runs, wickets: i.wickets, balls: i.balls }));
+      const innings = g.result.innings.map((i) => ({ teamId: i.teamId, runs: i.runs, wickets: i.wickets, balls: i.balls, allOut: i.allOut }));
       out.games.push({ fixture: f, winner: g.result.winner, innings });
       for (const i of innings) if (!out.highest || i.runs > out.highest.runs) out.highest = { teamId: i.teamId, runs: i.runs, label };
       const [i1, i2] = innings as [typeof innings[0], typeof innings[0]];
@@ -198,6 +282,9 @@ export function buildProfiles(comps: readonly Competition[]): Profiles {
   const teams = new Map<string, TeamRecord>();
   const players = new Map<string, PlayerRecord>();
   const competitions = new Map<string, CompetitionRecord>();
+  const allInnings: InningsEntry[] = [];
+  const allSpells: BowlEntry[] = [];
+  const allMatches: MatchEntry[] = [];
   const ordered = [...comps].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
 
   const team = (t: Team): TeamRecord => {
@@ -216,7 +303,7 @@ export function buildProfiles(comps: readonly Competition[]): Profiles {
       const key = playerKey(t.id, i);
       let p = players.get(key);
       if (!p) {
-        p = { key, teamId: t.id, teamName: t.name, name, slot: i, stats: emptyStats(), honours: [] };
+        p = { key, teamId: t.id, teamName: t.name, name, slot: i, stats: emptyStats(), bowling: emptyBowl(), honours: [] };
         players.set(key, p);
       }
       p.name = name;
@@ -254,6 +341,12 @@ export function buildProfiles(comps: readonly Competition[]): Profiles {
         if (t.form.length > 10) t.form.shift();
       }
     }
+    for (const g of cs.games) {
+      const [a, b] = g.innings as [MatchInnings, MatchInnings];
+      allMatches.push({ compId: comp.id, compName: comp.name, label: g.fixture.label, ballsPerOver: comp.config.ballsPerOver, innings: [{ ...a }, { ...b }], winner: g.winner });
+    }
+    for (const i of cs.innings) allInnings.push({ ...i, compId: comp.id, compName: comp.name });
+    for (const sp of cs.bowlSpells) allSpells.push({ ...sp, compId: comp.id, compName: comp.name });
     // played counted once per innings above, which is once per team per game: correct.
     for (const [key, p] of cs.players) {
       const rec = players.get(key);
@@ -262,6 +355,10 @@ export function buildProfiles(comps: readonly Competition[]): Profiles {
       const o = p.stats;
       s.innings += o.innings; s.notOuts += o.notOuts; s.runs += o.runs; s.balls += o.balls; s.fours += o.fours; s.sixes += o.sixes;
       s.fifties += o.fifties; s.hundreds += o.hundreds; s.ducks += o.ducks; s.potm += o.potm;
+      const bw = rec.bowling;
+      const ob = p.bowl;
+      bw.innings += ob.innings; bw.balls += ob.balls; bw.maidens += ob.maidens; bw.runs += ob.runs; bw.wickets += ob.wickets;
+      if (ob.best && (!bw.best || ob.best.wickets > bw.best.wickets || (ob.best.wickets === bw.best.wickets && ob.best.runs < bw.best.runs))) bw.best = { ...ob.best };
       if (o.highest > s.highest || (o.highest === s.highest && o.highestNotOut && !s.highestNotOut)) {
         s.highest = o.highest;
         s.highestNotOut = o.highestNotOut;
@@ -293,5 +390,5 @@ export function buildProfiles(comps: readonly Competition[]): Profiles {
   }
 
   for (const t of teams.values()) if (t.lowest === Infinity) t.lowest = 0;
-  return { teams, players, competitions };
+  return { teams, players, competitions, innings: allInnings, bowlSpells: allSpells, matches: allMatches };
 }
