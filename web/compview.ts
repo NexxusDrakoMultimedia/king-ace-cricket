@@ -10,13 +10,15 @@ import { esc } from "./render.ts";
 
 export const teamName = (comp: Competition, id: string): string => esc(teamOf(comp, id).name);
 
+/** A league with playoffs is an event. */
 export function kindLabel(comp: Competition): string {
   if (comp.kind === "cup") return "Cup";
-  return comp.settings.finals === "semis" && comp.settings.bestOf > 1 ? "Event" : "League";
+  return comp.settings.playoffSpots > 0 ? "Event" : "League";
 }
 
 export function tags(comp: Competition): string {
   const t = [kindLabel(comp), `${comp.teams.length} teams`, `${comp.config.soloOvers} overs`];
+  if (comp.settings.playoffSpots > 0) t.push(`top ${comp.settings.playoffSpots} to playoffs`);
   if (comp.settings.strength) t.push("strength on");
   if (comp.settings.bestOf > 1 || comp.settings.finalBestOf > 1) t.push(`best of ${comp.settings.bestOf}/${comp.settings.finalBestOf}`);
   return t.map((x) => `<span class="tag">${esc(x)}</span>`).join("");
@@ -41,22 +43,14 @@ export function resultLine(comp: Competition, f: Fixture): string {
   return `${score(a)} · ${score(b)}. ${verdict}.`;
 }
 
-export interface Zones {
-  /** Rows at the top highlighted as promotion places. */
-  up?: number;
-  /** Rows at the bottom highlighted as relegation places. */
-  down?: number;
-}
-
-export function renderStandings(comp: Competition, zones: Zones = {}): string {
+export function renderStandings(comp: Competition): string {
   const rows = standings(comp);
   const champ = isComplete(comp) ? champion(comp) : null;
   const strength = comp.settings.strength;
   const body = rows
     .map((r, i) => {
-      const cls = [r.teamId === champ && comp.settings.finals === "none" ? "hl" : "", zones.up && i < zones.up ? "zone" : "", zones.down && i >= rows.length - zones.down ? "drop" : ""]
-        .filter(Boolean)
-        .join(" ");
+      const spots = comp.settings.playoffSpots;
+      const cls = [r.teamId === champ && spots === 0 ? "hl" : "", i < spots ? "zone" : ""].filter(Boolean).join(" ");
       return `<tr class="${cls}">
         <td class="num">${i + 1}</td><td>${esc(r.name)}</td>
         ${strength ? `<td class="num">${teamOf(comp, r.teamId).strength ?? 0}</td>` : ""}
@@ -105,7 +99,15 @@ export function renderChampion(comp: Competition): string {
 }
 
 /** Standings (leagues) and fixtures. */
-export function renderBody(comp: Competition, zones: Zones = {}): string {
-  const table = comp.kind === "league" ? `<h3>Table</h3>${renderStandings(comp, zones)}` : "";
+export function renderBody(comp: Competition): string {
+  const spots = comp.settings.playoffSpots;
+  let size = 1;
+  while (size < spots) size *= 2;
+  const nByes = size - spots;
+  const byes = nByes === 1 ? " The top seed gets a bye to the second round." : nByes > 1 ? ` Seeds 1 to ${nByes} get a bye to the second round.` : "";
+  const key = comp.kind === "league" && spots > 0
+    ? `<p class="hint">The top ${spots} go through to the playoffs, seeded by their place in the table: the best seed plays the lowest.${byes}</p>`
+    : "";
+  const table = comp.kind === "league" ? `<h3>Table</h3>${renderStandings(comp)}${key}` : "";
   return `${renderChampion(comp)}${table}<h3>${comp.kind === "cup" ? "Draw and results" : "Fixtures and results"}</h3>${renderFixtures(comp)}`;
 }

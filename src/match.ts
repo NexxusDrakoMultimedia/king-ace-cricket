@@ -6,6 +6,8 @@ import { DEFAULT_CONFIG, playSoloInnings } from "./innings.ts";
 import type { BallRecord, Config } from "./innings.ts";
 import type { Outcome } from "./rules.ts";
 import { makeRng } from "./rng.ts";
+import { decideMatch, playTeamMatch } from "./teamMatch.ts";
+import type { InningsSummary } from "./teamMatch.ts";
 
 /** A cricket side: exactly 11 named players, in batting order. */
 export interface Team {
@@ -28,25 +30,38 @@ export function clampStrength(n: unknown): number {
 
 export interface InningsRecord {
   battingTeam: Team;
-  bowlingTeam?: Team; // two-player only (not built yet)
+  /** The fielding side, in a versus match. A single solo innings has none. */
+  bowlingTeam?: Team;
   log: BallRecord[];
 }
 
 /**
  * A saved match. Everything the scorebook shows can be rebuilt from this, and it
  * is plain JSON so it can be kept in localStorage now and a server later.
+ *
+ * - "solo": one team bats a single innings (one entry in `innings`).
+ * - "versus": a one-off match between two teams under the solo rules, the same
+ *   match a competition plays: a coin toss, then the second side chases (two
+ *   entries in `innings`, in batting order).
  */
 export interface MatchRecord {
   version: 1;
   id: string;
   createdAt: string;
   updatedAt: string;
-  mode: "solo";
+  mode: "solo" | "versus";
   seed: number;
   config: Config;
+  /** Versus only: team strength (redraws of a King) applied. */
+  strength?: boolean;
   innings: InningsRecord[];
-  /** How many balls of innings[0] have been revealed so far. */
+  /** How many balls have been revealed so far, counting through the innings in order. */
   progress: number;
+}
+
+/** Every ball of the match, in order. `progress` counts into this. */
+export function totalBalls(m: MatchRecord): number {
+  return m.innings.reduce((n, inn) => n + inn.log.length, 0);
 }
 
 export function makeTeam(name: string, players: string[] = [], id?: string, strength = 0): Team {
@@ -56,6 +71,19 @@ export function makeTeam(name: string, players: string[] = [], id?: string, stre
     players,
     strength,
   });
+}
+
+const NUMBER_WORDS = ["One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven"];
+
+/**
+ * The two sides every new player starts with, so a full match can be played
+ * straight away: Alpha XI (Alpha One to Alpha Eleven) and Omega XI (Omega One to
+ * Omega Eleven). The first and the last, a nod to the Dragon Goddess.
+ */
+export function starterTeams(): [Team, Team] {
+  const side = (word: string): Team =>
+    normaliseTeam({ id: `t-${word.toLowerCase()}`, name: `${word} XI`, players: NUMBER_WORDS.map((n) => `${word} ${n}`), strength: 0 });
+  return [side("Alpha"), side("Omega")];
 }
 
 /** Trim names, fill blanks with "Player n", and force exactly 11 players. */
@@ -83,6 +111,64 @@ export function newSoloMatch(team: Team, seed: number, config: Config = DEFAULT_
     innings: [{ battingTeam: t, log }],
     progress: 0,
   };
+}
+
+/**
+ * A one-off match between two teams. It plays exactly as a competition match with
+ * the same seed would, but ties stand (there is nothing to settle).
+ */
+export function newVersusMatch(
+  a: Team,
+  b: Team,
+  seed: number,
+  config: Config = DEFAULT_CONFIG,
+  opts: { strength?: boolean; now?: Date } = {},
+): MatchRecord {
+  const ta = normaliseTeam(a);
+  const tb = normaliseTeam(b);
+  if (ta.id === tb.id) throw new Error("Pick two different teams.");
+  const strength = !!opts.strength;
+  const played = playTeamMatch(ta, tb, seed, config, { strength, knockout: false }, true);
+  const first = played.result.innings[0].teamId === ta.id ? ta : tb;
+  const second = first === ta ? tb : ta;
+  const now = opts.now ?? new Date();
+  const stamp = now.toISOString();
+  return {
+    version: 1,
+    id: `m-${now.getTime().toString(36)}-${(seed >>> 0).toString(36)}`,
+    createdAt: stamp,
+    updatedAt: stamp,
+    mode: "versus",
+    seed,
+    config,
+    strength,
+    innings: [
+      { battingTeam: first, bowlingTeam: second, log: played.logs![0] },
+      { battingTeam: second, bowlingTeam: first, log: played.logs![1] },
+    ],
+    progress: 0,
+  };
+}
+
+/** Totals of an innings from its log (up to `balls` of it). */
+export function inningsSummary(team: Team, log: readonly BallRecord[], config: Config, balls = log.length): InningsSummary {
+  let runs = 0;
+  let wickets = 0;
+  let redrawsUsed = 0;
+  const shown = log.slice(0, balls);
+  for (const b of shown) {
+    if (b.outcome.kind === "runs") runs += b.outcome.runs;
+    else if (b.outcome.kind === "wicket") wickets++;
+    if (b.redrawn) redrawsUsed++;
+  }
+  return { teamId: team.id, runs, wickets, balls: shown.length, allOut: wickets >= config.maxWickets, redrawsUsed };
+}
+
+/** The result of a versus match once every ball has been revealed, or null before then. */
+export function versusResult(m: MatchRecord): { winner: string | null; margin: string } | null {
+  if (m.mode !== "versus" || m.progress < totalBalls(m)) return null;
+  const [a, b] = m.innings as [InningsRecord, InningsRecord];
+  return decideMatch(inningsSummary(a.battingTeam, a.log, m.config), inningsSummary(b.battingTeam, b.log, m.config), m.config);
 }
 
 // ---- Validation of untrusted JSON (storage, file import) ----
@@ -144,25 +230,47 @@ export function parseConfig(x: unknown): Config | null {
   };
 }
 
-export function parseMatch(x: unknown): MatchRecord | null {
-  if (!isObj(x) || x.version !== 1 || x.mode !== "solo") return null;
-  if (!isStr(x.id, 100) || !isStr(x.createdAt, 40) || !isStr(x.updatedAt, 40)) return null;
-  if (!isInt(x.seed, -2147483648, 4294967295)) return null;
-  const config = parseConfig(x.config);
-  if (!config || !Array.isArray(x.innings) || x.innings.length !== 1) return null;
-  const inn = x.innings[0];
-  if (!isObj(inn) || !Array.isArray(inn.log) || inn.log.length > 2000) return null;
-  const team = parseTeam(inn.battingTeam);
-  if (!team) return null;
+function parseInnings(x: unknown, needsBowlers: boolean): InningsRecord | null {
+  if (!isObj(x) || !Array.isArray(x.log) || x.log.length > 2000) return null;
+  const battingTeam = parseTeam(x.battingTeam);
+  if (!battingTeam) return null;
   const log: BallRecord[] = [];
-  for (const b of inn.log) {
+  for (const b of x.log) {
     const rec = parseBall(b);
     if (!rec) return null;
     log.push(rec);
   }
-  if (!isInt(x.progress, 0, log.length)) return null;
-  return {
-    version: 1, id: x.id, createdAt: x.createdAt, updatedAt: x.updatedAt, mode: "solo",
-    seed: x.seed, config, innings: [{ battingTeam: team, log }], progress: x.progress,
+  if (!needsBowlers) return { battingTeam, log };
+  const bowlingTeam = parseTeam(x.bowlingTeam);
+  if (!bowlingTeam || bowlingTeam.id === battingTeam.id) return null;
+  return { battingTeam, bowlingTeam, log };
+}
+
+export function parseMatch(x: unknown): MatchRecord | null {
+  if (!isObj(x) || x.version !== 1 || (x.mode !== "solo" && x.mode !== "versus")) return null;
+  if (!isStr(x.id, 100) || !isStr(x.createdAt, 40) || !isStr(x.updatedAt, 40)) return null;
+  if (!isInt(x.seed, -2147483648, 4294967295)) return null;
+  const config = parseConfig(x.config);
+  const versus = x.mode === "versus";
+  if (!config || !Array.isArray(x.innings) || x.innings.length !== (versus ? 2 : 1)) return null;
+  const innings: InningsRecord[] = [];
+  for (const raw of x.innings) {
+    const inn = parseInnings(raw, versus);
+    if (!inn) return null;
+    innings.push(inn);
+  }
+  if (versus) {
+    // The two sides swap: whoever bats first fields second.
+    const [a, b] = innings as [InningsRecord, InningsRecord];
+    if (a.battingTeam.id !== b.bowlingTeam!.id || b.battingTeam.id !== a.bowlingTeam!.id) return null;
+    if (x.strength !== undefined && typeof x.strength !== "boolean") return null;
+  }
+  const out: MatchRecord = {
+    version: 1, id: x.id, createdAt: x.createdAt, updatedAt: x.updatedAt, mode: versus ? "versus" : "solo",
+    seed: x.seed, config, innings, progress: 0,
   };
+  if (!isInt(x.progress, 0, totalBalls(out))) return null;
+  out.progress = x.progress;
+  if (versus) out.strength = x.strength === true;
+  return out;
 }

@@ -171,19 +171,20 @@ test("Accept all: Google Analytics loads once, privacy-first, and only fixed eve
 });
 
 test("a created competition reports its kind and a team-count bucket, never its name or teams", async () => {
-  const w = await load("dist-analytics");
+  const six = Array.from({ length: 6 }, (_, i) => ({ id: `t${i}`, name: `Hidden Side ${i}`, players: [] }));
+  const w = await load("dist-analytics", { storage: { "kac:v1:teams": JSON.stringify(six) } });
   await click(w, "consentAccept");
   w.document.querySelector('.tab[data-view="comps"]').dispatchEvent(new w.MouseEvent("click", { bubbles: true }));
   await tick();
   w.document.querySelector('[data-action="comp-new"]').dispatchEvent(new w.MouseEvent("click", { bubbles: true }));
   await tick();
   $(w, "compName").value = "Pyra's Secret League";
-  $(w, "compGen").value = "6";
+  for (const box of $(w, "compMyTeams").querySelectorAll("input")) box.checked = true;
   $(w, "compForm").dispatchEvent(new w.Event("submit", { bubbles: true, cancelable: true }));
   await tick(150);
   const events = w.dataLayer.map((a) => [...a]).filter((c) => c[0] === "event");
   const created = events.find((c) => c[1] === "competition_created");
-  assert.deepEqual(plain(created[2]), { kind: "league", teams: "5-8", strength: false, from_system: false });
+  assert.deepEqual(plain(created[2]), { kind: "league", teams: "5-8", strength: false });
   const everything = JSON.stringify(w.dataLayer.map((a) => [...a]));
   assert.doesNotMatch(everything, /Secret League/);
   const teamNames = JSON.parse(w.localStorage.getItem("kac:v1:competitions"))[0].teams.map((t) => t.name);
@@ -222,7 +223,7 @@ test("withdrawing consent switches Google Analytics off, clears its cookies, and
   assert.deepEqual({ teams: w.localStorage.getItem("kac:v1:teams"), matches: w.localStorage.getItem("kac:v1:matches") }, appDataBefore, "the app's own data is untouched");
   assert.equal(consentOf(w).ga, false);
   const before = w.dataLayer.length;
-  w.document.querySelector('.tab[data-view="systems"]').dispatchEvent(new w.MouseEvent("click", { bubbles: true }));
+  w.document.querySelector('.tab[data-view="records"]').dispatchEvent(new w.MouseEvent("click", { bubbles: true }));
   await tick();
   assert.equal(w.dataLayer.length, before, "no events after withdrawal");
 });

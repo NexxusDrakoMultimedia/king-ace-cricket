@@ -8,21 +8,21 @@
  * at runtime too.
  */
 
-export type ViewName = "solo" | "comps" | "systems" | "ratings" | "records";
+export type ViewName = "solo" | "comps" | "ratings" | "records";
 export type CompKind = "league" | "cup" | "event";
-export type ExportKind = "match" | "competition" | "system" | "ratings" | "backup";
+export type ExportKind = "match" | "competition" | "ratings" | "backup";
 
 export type AppEvent =
   | { name: "app_open" }
   | { name: "view"; view: ViewName }
   | { name: "solo_started" }
-  | { name: "competition_created"; kind: CompKind; teams: string; strength: boolean; fromSystem: boolean }
+  | { name: "versus_started" }
+  | { name: "competition_created"; kind: CompKind; teams: string; strength: boolean }
   | { name: "competition_completed"; kind: CompKind }
-  | { name: "system_created"; tiers: number; playoffs: boolean }
-  | { name: "season_completed"; tiers: number }
   | { name: "broadcast_started" }
   | { name: "data_exported"; kind: ExportKind }
-  | { name: "data_imported" };
+  | { name: "data_imported" }
+  | { name: "data_cleared" };
 
 /** Team counts are reported in coarse buckets, never exactly. */
 export function bucketTeams(n: number): string {
@@ -33,13 +33,14 @@ export function bucketTeams(n: number): string {
   return "65+";
 }
 
-export function kindOf(kind: "league" | "cup", settings: { finals: string; bestOf: number }): CompKind {
-  return kind === "cup" ? "cup" : settings.finals === "semis" && settings.bestOf > 1 ? "event" : "league";
+/** A league with playoffs is an event. */
+export function kindOf(kind: "league" | "cup", settings: { playoffSpots: number }): CompKind {
+  return kind === "cup" ? "cup" : settings.playoffSpots > 0 ? "event" : "league";
 }
 
-const VIEWS: readonly string[] = ["solo", "comps", "systems", "ratings", "records"];
+const VIEWS: readonly string[] = ["solo", "comps", "ratings", "records"];
 const KINDS: readonly string[] = ["league", "cup", "event"];
-const EXPORTS: readonly string[] = ["match", "competition", "system", "ratings", "backup"];
+const EXPORTS: readonly string[] = ["match", "competition", "ratings", "backup"];
 const BUCKETS: readonly string[] = ["2-4", "5-8", "9-16", "17-64", "65+"];
 
 /** Drops anything that is not one of the allowed shapes. Returns null if the event is not valid. */
@@ -47,21 +48,19 @@ export function sanitise(e: AppEvent): AppEvent | null {
   switch (e.name) {
     case "app_open":
     case "solo_started":
+    case "versus_started":
     case "broadcast_started":
     case "data_imported":
+    case "data_cleared":
       return { name: e.name };
     case "view":
       return VIEWS.includes(e.view) ? { name: "view", view: e.view } : null;
     case "competition_created":
       return KINDS.includes(e.kind) && BUCKETS.includes(e.teams)
-        ? { name: "competition_created", kind: e.kind, teams: e.teams, strength: !!e.strength, fromSystem: !!e.fromSystem }
+        ? { name: "competition_created", kind: e.kind, teams: e.teams, strength: !!e.strength }
         : null;
     case "competition_completed":
       return KINDS.includes(e.kind) ? { name: "competition_completed", kind: e.kind } : null;
-    case "system_created":
-      return Number.isInteger(e.tiers) && e.tiers >= 2 && e.tiers <= 8 ? { name: "system_created", tiers: e.tiers, playoffs: !!e.playoffs } : null;
-    case "season_completed":
-      return Number.isInteger(e.tiers) && e.tiers >= 2 && e.tiers <= 8 ? { name: "season_completed", tiers: e.tiers } : null;
     case "data_exported":
       return EXPORTS.includes(e.kind) ? { name: "data_exported", kind: e.kind } : null;
     default:
@@ -78,7 +77,7 @@ export interface GaEvent {
 export function toGa(e: AppEvent): GaEvent {
   const { name, ...rest } = e;
   const params: Record<string, string | number | boolean> = {};
-  // GA4 parameter names are snake_case by convention: fromSystem becomes from_system.
+  // GA4 parameter names are snake_case by convention: a name like fooBar becomes foo_bar.
   for (const [k, v] of Object.entries(rest)) params[k.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)] = v as string | number | boolean;
   return name === "view" ? { name: "page_view", params: { page_title: String(params.view), page_path: `/${params.view}` } } : { name, params };
 }
@@ -97,8 +96,6 @@ export function toGameAnalytics(e: AppEvent): GameAnalyticsCall {
     case "view": return { design: { id: `view:${e.view}` } };
     case "competition_created": return { design: { id: `competition:created:${e.kind}` }, progression: { status: "Start", p1: "competition", p2: e.kind } };
     case "competition_completed": return { design: { id: `competition:completed:${e.kind}` }, progression: { status: "Complete", p1: "competition", p2: e.kind } };
-    case "system_created": return { design: { id: "system:created", value: e.tiers } };
-    case "season_completed": return { design: { id: "system:season:completed", value: e.tiers } };
     case "data_exported": return { design: { id: `data:exported:${e.kind}` } };
     default: return { design: { id: e.name.replace(/_/g, ":") } };
   }

@@ -50,6 +50,23 @@ export interface PlayedMatch {
 const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /**
+ * The result of a finished match from its two innings (batting order), with no
+ * tiebreak: equal scores are a tie (winner null). Knockouts settle ties themselves.
+ */
+export function decideMatch(
+  s1: InningsSummary,
+  s2: InningsSummary,
+  config: Config,
+): { winner: string | null; margin: string } {
+  if (s2.runs > s1.runs) {
+    const ballsLeft = config.soloOvers * config.ballsPerOver - s2.balls;
+    return { winner: s2.teamId, margin: `by ${plural(config.maxWickets - s2.wickets, "wicket")} (${plural(ballsLeft, "ball")} left)` };
+  }
+  if (s2.runs < s1.runs) return { winner: s1.teamId, margin: `by ${plural(s1.runs - s2.runs, "run")}` };
+  return { winner: null, margin: "tie" };
+}
+
+/**
  * Play one match: a coin toss (the winner bats), then two solo innings, the
  * second chasing the first. Fully determined by `seed`, so it can be replayed.
  */
@@ -76,27 +93,18 @@ export function playTeamMatch(
   const s1 = sum(first, i1);
   const s2 = sum(second, i2);
 
-  let winner: string | null;
-  let margin: string;
+  let { winner, margin } = decideMatch(s1, s2, config);
   let tiebreak: "wickets" | "coin" | undefined;
-  if (s2.runs > s1.runs) {
-    winner = second.id;
-    const ballsLeft = config.soloOvers * config.ballsPerOver - s2.balls;
-    margin = `by ${plural(config.maxWickets - s2.wickets, "wicket")} (${plural(ballsLeft, "ball")} left)`;
-  } else if (s2.runs < s1.runs) {
-    winner = first.id;
-    margin = `by ${plural(s1.runs - s2.runs, "run")}`;
-  } else if (!settings.knockout) {
-    winner = null;
-    margin = "tie";
-  } else if (s1.wickets !== s2.wickets) {
-    winner = s1.wickets < s2.wickets ? first.id : second.id;
-    margin = "tie, won on fewer wickets lost";
-    tiebreak = "wickets";
-  } else {
-    winner = rng() < 0.5 ? first.id : second.id;
-    margin = "tie, won on a coin toss";
-    tiebreak = "coin";
+  if (winner === null && settings.knockout) {
+    if (s1.wickets !== s2.wickets) {
+      winner = s1.wickets < s2.wickets ? first.id : second.id;
+      margin = "tie, won on fewer wickets lost";
+      tiebreak = "wickets";
+    } else {
+      winner = rng() < 0.5 ? first.id : second.id;
+      margin = "tie, won on a coin toss";
+      tiebreak = "coin";
+    }
   }
 
   const result: MatchResult = { innings: [s1, s2], winner, margin };

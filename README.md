@@ -1,6 +1,6 @@
 # King and Ace Cricket
 
-A cricket card game played with a standard 52-card deck, invented by Pyra Drake. This repository holds the rules, a TypeScript rules engine and simulator, and a web app for playing solo innings, leagues, cups, tiered league systems and eSports-style events on a paper scorebook.
+A cricket card game played with a standard 52-card deck, invented by Pyra Drake. This repository holds the rules, a TypeScript rules engine and simulator, and a web app for playing solo innings, one-off matches, leagues, cups and eSports-style events on a paper scorebook.
 
 ## Rules
 
@@ -15,13 +15,13 @@ The full rules are in [rules.md](rules.md). In short:
 
 A static site with no server, live at `kac.nexxusdrako.au`.
 
-- **Solo:** a paper-style scorebook with strike rotation, fall of wickets, a struck-through runs ladder and over-by-over grid. Play a ball, an over or the whole innings.
-- **Competitions:** leagues (up to 16 teams, optional finals), cups (up to 1,024 teams, seeded brackets, "Round of 64" down to the final) and events (league stage, playoffs, best-of-3 and best-of-5 series). Pick your own teams, generate them, seed a cup from a league system, or put champions against each other.
-- **Leagues:** tiered systems with promotion, relegation and optional playoffs, played a season at a time.
+- **Solo:** a paper-style scorebook with strike rotation, fall of wickets, a struck-through runs ladder and over-by-over grid. Bat a single innings, or play a one-off 1v1 match against another of your teams. Play a ball, an over or the whole innings.
+- **Bowling cards:** in any match between two teams, the fielding side's numbers 11 to 7 bowl in turn, from the bottom of the order up, with overs, maidens, runs, wickets and economy, and each wicket credited to its bowler.
+- **Competitions:** leagues (up to 16 teams), cups (up to 1,024 teams, a random draw or seeded by rating or strength, "Round of 64" down to the final) and events (a league stage, then playoffs for any number of teams, seeded by the table with byes for the top seeds, and best-of-3 and best-of-5 series). Pick from your own teams, or put champions against each other.
 - **Broadcast:** watch any match with Pyra Drake as lead commentator, a stats desk, key-moment pop-ups and Player of the Match. Commentary is generated, not recorded.
 - **Ratings and records:** Elo and Glicko ratings, and profiles with honours for every team, player and competition.
-- **Teams:** name all eleven players, or generate teams from the major cricket-playing regions. Optional team strength gives a team redraws of a King.
-- **Saving:** everything is saved in your browser. Export a file to keep a backup or move devices.
+- **Teams:** you start with Alpha XI (Alpha One to Alpha Eleven) and Omega XI (Omega One to Omega Eleven). Name all eleven players yourself, or generate teams from the major cricket-playing regions. Optional team strength gives a team redraws of a King.
+- **Saving:** everything is saved in your browser. In Backup, export a file to keep a copy or move devices, import it again, or clear everything and start fresh.
 
 The look follows the [Nexxus Drako Multimedia design system](https://github.com/NexxusDrakoMultimedia/design-system). Its two fonts, Orbitron and Exo 2, are hosted on the site itself, so loading the page makes no request to Google.
 
@@ -61,7 +61,7 @@ npm test             # unit tests and simulated-browser tests of the built page
 npm run sim          # print simulation statistics
 ```
 
-Layout: `src/` is the engine (rules, matches, competitions, league systems, ratings, profiles, commentary, names, storage, consent), `web/` is the page, `scripts/` is the build, and `test/` holds the tests. [AGENTS.md](AGENTS.md) has the details and the rules for changes.
+Layout: `src/` is the engine (rules, matches, competitions, ratings, profiles, commentary, names, storage, consent), `web/` is the page, `scripts/` is the build, and `test/` holds the tests. [AGENTS.md](AGENTS.md) has the details and the rules for changes.
 
 ## Releases
 

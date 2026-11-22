@@ -67,9 +67,9 @@ test("stored consent is validated, and anything odd means no choice", () => {
 
 const samples: AppEvent[] = [
   { name: "app_open" }, { name: "view", view: "comps" }, { name: "solo_started" },
-  { name: "competition_created", kind: "event", teams: "5-8", strength: true, fromSystem: false },
-  { name: "competition_completed", kind: "cup" }, { name: "system_created", tiers: 3, playoffs: true },
-  { name: "season_completed", tiers: 3 }, { name: "broadcast_started" }, { name: "data_exported", kind: "backup" }, { name: "data_imported" },
+  { name: "versus_started" }, { name: "competition_created", kind: "event", teams: "5-8", strength: true },
+  { name: "competition_completed", kind: "cup" }, { name: "broadcast_started" }, { name: "data_exported", kind: "backup" },
+  { name: "data_imported" }, { name: "data_cleared" },
 ];
 
 test("every event survives sanitising unchanged", () => {
@@ -78,9 +78,9 @@ test("every event survives sanitising unchanged", () => {
 
 test("events cannot carry free text: bad shapes are dropped", () => {
   const evil = [
-    { name: "view", view: "<script>" }, { name: "competition_created", kind: "Pyra's League", teams: "5-8", strength: false, fromSystem: false },
-    { name: "competition_created", kind: "cup", teams: "exactly 37", strength: false, fromSystem: false },
-    { name: "data_exported", kind: "../../etc/passwd" }, { name: "season_completed", tiers: 99 }, { name: "mystery" },
+    { name: "view", view: "<script>" }, { name: "competition_created", kind: "Pyra's League", teams: "5-8", strength: false },
+    { name: "competition_created", kind: "cup", teams: "exactly 37", strength: false },
+    { name: "data_exported", kind: "../../etc/passwd" }, { name: "view", view: "systems" }, { name: "system_created", tiers: 3 }, { name: "mystery" },
   ] as unknown as AppEvent[];
   for (const e of evil) assert.equal(sanitise(e), null, JSON.stringify(e));
   // Extra fields on a valid event are stripped, not forwarded.
@@ -90,9 +90,9 @@ test("events cannot carry free text: bad shapes are dropped", () => {
 
 test("team counts are bucketed and event kinds derived", () => {
   assert.deepEqual([2, 4, 5, 8, 9, 16, 17, 64, 65, 1024].map(bucketTeams), ["2-4", "2-4", "5-8", "5-8", "9-16", "9-16", "17-64", "17-64", "65+", "65+"]);
-  assert.equal(kindOf("cup", { finals: "none", bestOf: 1 }), "cup");
-  assert.equal(kindOf("league", { finals: "semis", bestOf: 3 }), "event");
-  assert.equal(kindOf("league", { finals: "semis", bestOf: 1 }), "league");
+  assert.equal(kindOf("cup", { playoffSpots: 0 }), "cup");
+  assert.equal(kindOf("league", { playoffSpots: 6 }), "event");
+  assert.equal(kindOf("league", { playoffSpots: 0 }), "league");
 });
 
 test("Google Analytics events: GA4 names and flat parameters, a view becomes a page_view", () => {
@@ -116,7 +116,7 @@ test("GameAnalytics events: valid design event ids, and progression for competit
     for (const s of segments) assert.match(s, /^[A-Za-z0-9 _.()!?-]{1,32}$/, `${c.design.id} segment "${s}"`);
     if (c.design.value !== undefined) assert.ok(Number.isFinite(c.design.value));
   }
-  assert.deepEqual(toGameAnalytics({ name: "competition_created", kind: "league", teams: "5-8", strength: false, fromSystem: false }).progression, { status: "Start", p1: "competition", p2: "league" });
+  assert.deepEqual(toGameAnalytics({ name: "competition_created", kind: "league", teams: "5-8", strength: false }).progression, { status: "Start", p1: "competition", p2: "league" });
   assert.deepEqual(toGameAnalytics({ name: "competition_completed", kind: "cup" }).progression, { status: "Complete", p1: "competition", p2: "cup" });
   assert.equal(toGameAnalytics({ name: "app_open" }).progression, undefined);
 });

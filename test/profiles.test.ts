@@ -5,7 +5,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { average, buildProfiles, playerKey, strikeRate } from "../src/profiles.ts";
 import { champion, createCompetition, replayFixture, simulateAll, standings } from "../src/competition.ts";
-import { createSystem, simulateSeason, startNextSeason } from "../src/leagueSystem.ts";
 import { ballCommentary, LEAD_COMMENTATOR, playerOfMatch, statsCommentary } from "../src/commentary.ts";
 import { buildScorebook } from "../src/scorebook.ts";
 import { DEFAULT_CONFIG } from "../src/innings.ts";
@@ -89,26 +88,6 @@ test("series: every game of a best-of counts towards the stats", () => {
   assert.equal([...p.players.values()].reduce((s, x) => s + x.stats.potm, 0), games);
   const total = [...p.teams.values()].reduce((s, t) => s + t.played, 0);
   assert.equal(total, games * 2);
-});
-
-test("league systems: tier titles, promotion and relegation honours across seasons", () => {
-  const sys = createSystem({ name: "Pyramid", tiers: [teams(6, 1), teams(6, 2)], seed: 9, now: NOW, settings: { promotionSpots: 1, rounds: 1 } });
-  simulateSeason(sys, NOW);
-  startNextSeason(sys, new Date(NOW.getTime() + 1000));
-  simulateSeason(sys, new Date(NOW.getTime() + 1000));
-  const p = buildProfiles([], [sys]);
-  const o = sys.seasons[0]!.outcome!;
-  const promoted = p.teams.get(o.promoted[0]![0]!)!;
-  assert.ok(promoted.honours.some((h) => h.kind === "promoted" && h.title === "Promoted to Division 1, season 1"));
-  const relegated = p.teams.get(o.relegated[0]![0]!)!;
-  assert.ok(relegated.honours.some((h) => h.kind === "relegated" && /Division 2, season 1/.test(h.title)));
-  assert.ok(promoted.honours.every((h) => h.kind !== "promoted" || true));
-  const titles = [...p.teams.values()].flatMap((t) => t.honours).filter((h) => h.kind === "champion");
-  assert.equal(titles.length, 4, "two tiers, two seasons");
-  assert.ok(titles.some((h) => h.title === "Division 1 champions, season 2"));
-  // Promotion and relegation are for the team, not shared as player honours.
-  for (const pl of p.players.values()) assert.ok(pl.honours.every((h) => h.kind !== "promoted" && h.kind !== "relegated"));
-  assert.deepEqual([...buildProfiles([], [sys]).teams.keys()], [...p.teams.keys()], "deterministic");
 });
 
 test("a player is identified by team and batting slot", () => {

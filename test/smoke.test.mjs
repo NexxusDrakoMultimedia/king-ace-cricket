@@ -40,7 +40,11 @@ const dump = (w) => Object.fromEntries(Array.from({ length: w.localStorage.lengt
 test("the page boots with a blank scorebook and a hand of six face-down cards", async () => {
   const w = await load();
   assert.equal(w.document.querySelectorAll("table.bat tbody tr").length, 11);
-  assert.match($(w, "summary").textContent, /My XI: 0\/0 after 0\.0 overs/);
+  assert.match($(w, "summary").textContent, /Alpha XI: 0\/0 after 0\.0 overs/);
+  const teams = JSON.parse(w.localStorage.getItem("kac:v1:teams")).map((t) => t.name);
+  assert.deepEqual(teams, ["Alpha XI", "Omega XI"], "a first visit starts with two teams");
+  assert.match($(w, "sheet").textContent, /Alpha One/);
+  assert.match($(w, "sheet").textContent, /Alpha Eleven/);
   assert.equal(w.document.querySelectorAll(".hand .slot").length, 6);
   assert.equal(w.document.querySelectorAll(".hand .card.back").length, 6);
   assert.equal(w.document.querySelectorAll(".ladder .cell").length >= 160, true);
@@ -147,6 +151,81 @@ test("saved matches can be listed and reopened", async () => {
   openBtn.dispatchEvent(new w.MouseEvent("click", { bubbles: true }));
   await tick();
   assert.equal($(w, "summary").textContent, first);
+});
+
+test("a 1v1 match: both sides bat, both get a bowling card, and the result is given", async () => {
+  const w = await load();
+  click(w, "btnNew");
+  assert.equal($(w, "newStrengthWrap").hidden, true, "strength only applies to a match");
+  const opp = [...$(w, "newOpponent").options].map((o) => o.textContent);
+  assert.deepEqual(opp, ["Nobody: bat a single innings", "Omega XI"], "the batting side isn't offered as its own opponent");
+  $(w, "newOpponent").value = "t-omega";
+  $(w, "newOpponent").dispatchEvent(new w.Event("change", { bubbles: true }));
+  assert.equal($(w, "newStrengthWrap").hidden, false);
+  $(w, "newSeed").value = "2026";
+  submit(w, "newForm");
+  await tick();
+  assert.match($(w, "summary").textContent, /won the toss and bat first against/);
+  assert.equal(w.document.querySelectorAll(".sheet").length, 1, "only the first innings has started");
+  click(w, "btnInnings");
+  assert.equal($(w, "btnBall").disabled, false, "the chase is still to come");
+  assert.match($(w, "summary").textContent, /Need \d+ runs? from \d+ balls?/);
+  click(w, "btnBall");
+  assert.equal(w.document.querySelectorAll(".sheet").length, 2);
+  click(w, "btnInnings");
+  assert.equal($(w, "btnBall").disabled, true);
+  assert.match($(w, "summary").textContent, /won by|Match tied/);
+  // Each innings has a bowling card naming the other side's bowlers, bottom of the order first.
+  const sheets = [...w.document.querySelectorAll(".sheet")];
+  const firstBat = sheets[0].querySelector(".sheet-head .big").textContent;
+  const fielders = firstBat === "Alpha XI" ? "Omega" : "Alpha";
+  const bowlers = [...sheets[0].querySelectorAll("table.bowl tbody tr td:first-child")].map((td) => td.textContent);
+  assert.equal(bowlers[0], `${fielders} Eleven`);
+  assert.ok(bowlers.every((b) => b.startsWith(fielders)));
+  for (const sheet of sheets) {
+    const card = sheet.querySelector("table.bowl");
+    const sum = (col) => [...card.querySelectorAll("tbody tr")].reduce((t, tr) => t + Number(tr.querySelectorAll("td.num")[col].textContent), 0);
+    assert.equal(sum(2), Number(sheet.querySelector("tr.total td.num").textContent), "bowlers' runs add up to the total");
+  }
+  const saved = JSON.parse(w.localStorage.getItem("kac:v1:matches")).find((m) => m.mode === "versus");
+  assert.equal(saved.progress, saved.innings[0].log.length + saved.innings[1].log.length);
+  // It comes back after a reload.
+  const before = $(w, "summary").textContent;
+  const w2 = await load(dump(w));
+  assert.equal($(w2, "summary").textContent, before);
+});
+
+test("Clear all saved data starts fresh with the two starter teams and keeps the cookie choice", async () => {
+  const w = await load();
+  w.confirm = () => true;
+  w.localStorage.setItem("kac:v1:consent", JSON.stringify({ v: 1, ga: false, gameanalytics: false, at: new Date().toISOString() }));
+  w.localStorage.setItem("kac:v1:systems", "[]");
+  click(w, "btnTeams");
+  click(w, "teamGenerate");
+  submit(w, "teamForm");
+  await tick();
+  assert.equal(JSON.parse(w.localStorage.getItem("kac:v1:teams")).length, 3);
+  click(w, "btnInnings");
+  click(w, "btnBackup");
+  click(w, "btnClearAll");
+  await tick();
+  assert.deepEqual(JSON.parse(w.localStorage.getItem("kac:v1:teams")).map((t) => t.name), ["Alpha XI", "Omega XI"]);
+  assert.equal(JSON.parse(w.localStorage.getItem("kac:v1:matches")).length, 1, "only the fresh innings");
+  assert.equal(w.localStorage.getItem("kac:v1:systems"), null);
+  assert.ok(w.localStorage.getItem("kac:v1:consent"), "the cookie choice is kept");
+  assert.match($(w, "summary").textContent, /0\/0 after 0\.0 overs/);
+  assert.match($(w, "backupMsg").textContent, /Cleared/);
+});
+
+test("Clear all saved data does nothing if you say no", async () => {
+  const w = await load();
+  w.confirm = () => false;
+  click(w, "btnInnings");
+  const before = w.localStorage.getItem("kac:v1:matches");
+  click(w, "btnBackup");
+  click(w, "btnClearAll");
+  await tick();
+  assert.equal(w.localStorage.getItem("kac:v1:matches"), before);
 });
 
 test("the deployed bundle ships no inline scripts or styles (needed by the CSP)", () => {

@@ -52,19 +52,12 @@ test("competitions export and import with matches and teams", () => {
   assert.equal(r2.skipped, 1);
 });
 
-test("league systems export and import, alone or in a backup", async () => {
-  const { createSystem, simulateSeason } = await import("../src/leagueSystem.ts");
-  const t = generateTeams(makeRng(4), 12);
-  const sys = createSystem({ name: "Pyramid", tiers: [t.slice(0, 6), t.slice(6)], seed: 4, now: new Date("2026-11-19T10:00:00Z") });
-  simulateSeason(sys, new Date("2026-11-19T10:00:00Z"));
-  const bundle = parseImport(JSON.stringify(buildExport([], [], new Date(), [], [sys])));
-  assert.equal(bundle.error, undefined);
-  assert.deepEqual(bundle.systems, [sys]);
-  assert.deepEqual(parseImport(JSON.stringify(sys)).systems, [sys], "a lone system file is not mistaken for a bundle");
-  assert.equal(parseImport(JSON.stringify(sys)).teams.length, 0);
-  const hurt = JSON.parse(JSON.stringify(sys));
-  hurt.tierNames = ["only one"];
-  const r = parseImport(JSON.stringify(hurt));
-  assert.equal(r.systems.length, 0);
-  assert.ok(r.skipped >= 1 || r.error);
+test("files from before league systems were removed still import, without the systems", () => {
+  const t = generateTeams(makeRng(4), 3);
+  const old = { format: "king-ace-cricket", version: 1, exportedAt: "2026-11-19T10:00:00.000Z", matches: [], teams: t, competitions: [], systems: [{ id: "s-1", seasons: [] }] };
+  const r = parseImport(JSON.stringify(old));
+  assert.equal(r.error, undefined);
+  assert.deepEqual(r.teams, t);
+  assert.equal("systems" in r, false);
+  assert.match(parseImport(JSON.stringify({ id: "s-1", teams: t, seasons: [] })).error ?? "", /no longer part of the game/);
 });

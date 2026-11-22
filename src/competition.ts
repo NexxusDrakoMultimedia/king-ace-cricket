@@ -11,10 +11,10 @@ import { playTeamMatch, RULES_VERSION } from "./teamMatch.ts";
 import type { InningsSummary, MatchResult, PlayedMatch } from "./teamMatch.ts";
 
 export type CompetitionKind = "league" | "cup";
-export type Finals = "none" | "final" | "semis";
+/** "semi" only appears in competitions saved before playoffs were seeded brackets. */
 export type Stage = "league" | "semi" | "final" | "knockout";
 
-/** A single league is a round robin, so it is capped (use a tier system for more teams). */
+/** A single league is a round robin, so it is capped (use a cup for more teams). */
 export const MAX_TEAMS = 16;
 /**
  * Cups have no design limit. This is only a safety ceiling so a saved cup stays a
@@ -41,7 +41,12 @@ export interface CompetitionSettings {
   strength: boolean;
   /** League: 1 = everyone plays everyone once, 2 = home and away. */
   rounds: 1 | 2;
-  finals: Finals;
+  /**
+   * League: how many teams go from the table into a seeded knockout playoff.
+   * 0 = no playoffs (top of the table wins), otherwise 2 up to the number of teams.
+   * Counts that are not a power of 2 give the top seeds byes.
+   */
+  playoffSpots: number;
   pointsWin: number;
   pointsTie: number;
   /** Knockout ties (not the final) are decided over a series of this many matches. */
@@ -55,7 +60,7 @@ export type BestOf = 1 | 3 | 5;
 export const DEFAULT_SETTINGS: CompetitionSettings = {
   strength: false,
   rounds: 1,
-  finals: "none",
+  playoffSpots: 0,
   pointsWin: 2,
   pointsTie: 1,
   bestOf: 1,
@@ -80,12 +85,13 @@ export interface Competition {
   settings: CompetitionSettings;
   /** Snapshots of the teams as they were when the competition was created. */
   teams: Team[];
-  /** Cup only: teams that skip round 1 (the top seeds). */
+  /** Teams that skip the first knockout round (the top seeds of a cup or a playoff). */
   byes: string[];
   /**
-   * Cup only: the round-1 draw in bracket order, two slots per tie, "" for an empty
-   * slot (a bye). Winners of adjacent ties meet in the next round. Absent in cups
-   * saved before seeding existed.
+   * The first knockout round's draw in bracket order, two slots per tie, "" for an
+   * empty slot (a bye). Winners of adjacent ties meet in the next round. A cup has it
+   * from the start; a league with playoffs gets it when the league stage ends.
+   * Absent in cups saved before seeding existed.
    */
   bracket?: string[];
   fixtures: Fixture[];
@@ -141,7 +147,8 @@ export interface NewCompetition {
   now?: Date;
   /**
    * Cup only: team ids from best seed to worst. Teams not listed are seeded after
-   * them in a random order. Without this the whole draw is random.
+   * them in a random order. Without this the whole draw is random. (League playoffs
+   * are seeded by the final table.)
    */
   seeds?: string[];
 }
@@ -156,6 +163,44 @@ export function bracketSlots(size: number): number[] {
   return slots;
 }
 
+export interface Draw {
+  /** Slots in bracket order, "" for a bye. */
+  bracket: string[];
+  /** Seeds that skip the first round. */
+  byes: string[];
+  /** First-round ties, in bracket order. */
+  ties: [string, string][];
+  /** Bracket size: the number of teams rounded up to a power of 2. */
+  size: number;
+}
+
+/**
+ * A seeded knockout draw for any number of teams (best seed first). The bracket is
+ * the next power of 2 up; the missing seeds are byes, so the top seeds go straight
+ * to round 2 and seeds 1 and 2 can only meet in the final.
+ */
+export function seededDraw(seedOrder: readonly string[]): Draw {
+  let size = 1;
+  while (size < seedOrder.length) size *= 2;
+  const bracket = bracketSlots(size).map((s) => seedOrder[s - 1] ?? "");
+  const ties: [string, string][] = [];
+  for (let i = 0; i < bracket.length; i += 2) {
+    const a = bracket[i]!;
+    const b = bracket[i + 1]!;
+    if (a && b) ties.push([a, b]);
+  }
+  return { bracket, byes: seedOrder.slice(0, size - seedOrder.length), ties, size };
+}
+
+function addFirstRound(comp: Competition, draw: Draw, round: number): void {
+  draw.ties.forEach(([a, b], i) => {
+    comp.fixtures.push({
+      id: comp.fixtures.length, round, stage: draw.size === 2 ? "final" : "knockout",
+      label: knockoutLabel(draw.size, i + 1), a, b,
+    });
+  });
+}
+
 export function createCompetition(opts: NewCompetition): Competition {
   const settings: CompetitionSettings = { ...DEFAULT_SETTINGS, ...opts.settings };
   const teams: Team[] = [];
@@ -168,15 +213,18 @@ export function createCompetition(opts: NewCompetition): Competition {
   }
   if (teams.length < 2) throw new Error("A competition needs at least 2 teams.");
   if (opts.kind === "league" && teams.length > MAX_TEAMS) {
-    throw new Error(`A league can have at most ${MAX_TEAMS} teams. For more, use a tiered league system.`);
+    throw new Error(`A league can have at most ${MAX_TEAMS} teams. For more, use a cup.`);
   }
   if (opts.kind === "cup" && teams.length > MAX_CUP_TEAMS) {
     throw new Error(`A cup can have at most ${MAX_CUP_TEAMS} teams.`);
   }
   if (opts.kind === "league") {
-    if (settings.finals === "semis" && teams.length < 4) throw new Error("Semi-finals need at least 4 teams.");
+    const p = settings.playoffSpots;
+    if (!Number.isInteger(p) || p === 1 || p < 0 || p > teams.length) {
+      throw new Error(`Playoff spots must be 0 (no playoffs) or between 2 and ${teams.length}, the number of teams.`);
+    }
   } else {
-    settings.finals = "none";
+    settings.playoffSpots = 0;
     settings.rounds = 1;
   }
   const now = opts.now ?? new Date();
@@ -219,22 +267,10 @@ export function createCompetition(opts: NewCompetition): Competition {
         seedOrder.push(id);
       }
     }
-    let size = 1;
-    while (size < seedOrder.length) size *= 2;
-    // Seed s sits in slot bracketSlots()[i]; seeds beyond the team count are empty slots (byes).
-    comp.bracket = bracketSlots(size).map((s) => seedOrder[s - 1] ?? "");
-    comp.byes = seedOrder.slice(0, size - seedOrder.length);
-    for (let i = 0; i < comp.bracket.length; i += 2) {
-      const a = comp.bracket[i]!;
-      const b = comp.bracket[i + 1]!;
-      if (a && b) {
-        const n = comp.fixtures.length + 1;
-        comp.fixtures.push({
-          id: comp.fixtures.length, round: 1, stage: size === 2 ? "final" : "knockout",
-          label: knockoutLabel(size, n), a, b,
-        });
-      }
-    }
+    const draw = seededDraw(seedOrder);
+    comp.bracket = draw.bracket;
+    comp.byes = draw.byes;
+    addFirstRound(comp, draw, 1);
   }
   return comp;
 }
@@ -313,49 +349,43 @@ export function standings(comp: Competition): StandingRow[] {
 
 // ---- progress ----
 
-/** Adds any fixtures that are now due (finals, the next knockout round). Returns true if it added some. */
+/** Adds any fixtures that are now due (the playoffs, the next knockout round). Returns true if it added some. */
 export function advance(comp: Competition): boolean {
   if (comp.fixtures.length === 0 || comp.fixtures.some((f) => !f.result)) return false;
   const lastRound = Math.max(...comp.fixtures.map((f) => f.round));
-  const add = (stage: Stage, label: string, a: string, b: string): void => {
-    comp.fixtures.push({ id: comp.fixtures.length, round: lastRound + 1, stage, label, a, b });
-  };
+  const knockout = comp.fixtures.filter((f) => f.stage !== "league");
 
   if (comp.kind === "league") {
-    if (comp.settings.finals === "none") return false;
-    const hasFinal = comp.fixtures.some((f) => f.stage === "final");
-    if (hasFinal) return false;
-    const semis = comp.fixtures.filter((f) => f.stage === "semi");
-    if (comp.settings.finals === "final") {
-      const top = standings(comp);
-      add("final", "Final", top[0]!.teamId, top[1]!.teamId);
+    if (comp.settings.playoffSpots < 2) return false;
+    if (knockout.length === 0) {
+      // The league stage is over: seed the playoffs from the table.
+      const seeds = standings(comp).slice(0, comp.settings.playoffSpots).map((r) => r.teamId);
+      const draw = seededDraw(seeds);
+      comp.bracket = draw.bracket;
+      comp.byes = draw.byes;
+      addFirstRound(comp, draw, lastRound + 1);
       return true;
     }
-    if (semis.length === 0) {
-      const top = standings(comp);
-      add("semi", "Semi-final 1", top[0]!.teamId, top[3]!.teamId);
-      add("semi", "Semi-final 2", top[1]!.teamId, top[2]!.teamId);
-      return true;
-    }
-    add("final", "Final", semis[0]!.result!.winner!, semis[1]!.result!.winner!);
-    return true;
   }
+  if (knockout.some((f) => f.stage === "final")) return false;
 
-  // Cup: pair the winners of the last round (plus round-1 byes) for the next one.
-  const last = comp.fixtures.filter((f) => f.round === lastRound);
+  // Pair the winners of the last round (plus first-round byes) for the next one.
+  const firstRound = Math.min(...knockout.map((f) => f.round));
+  const last = knockout.filter((f) => f.round === lastRound);
   const winners = last.map((f) => f.result!.winner!);
   let players: string[];
-  if (lastRound === 1 && comp.bracket) {
+  if (lastRound === firstRound && comp.bracket) {
     // Walk the draw in bracket order: a tie's winner, or the team that had a bye.
     players = [];
     for (let i = 0; i < comp.bracket.length; i += 2) {
       const a = comp.bracket[i]!;
       const b = comp.bracket[i + 1]!;
       if (a && b) players.push(last.find((f) => f.a === a && f.b === b)!.result!.winner!);
-      else players.push(a || b);
+      else if (a || b) players.push(a || b);
     }
   } else {
-    players = lastRound === 1 ? [...comp.byes, ...winners] : winners;
+    // Cups saved before seeding put their byes in front of round 1's winners.
+    players = comp.kind === "cup" && lastRound === 1 ? [...comp.byes, ...winners] : winners;
   }
   if (players.length < 2) return false;
   for (let i = 0; i + 1 < players.length; i += 2) {
@@ -371,7 +401,7 @@ export function advance(comp: Competition): boolean {
 export function champion(comp: Competition): string | null {
   if (comp.fixtures.some((f) => !f.result)) return null;
   const final = comp.fixtures.find((f) => f.stage === "final");
-  if (comp.kind === "cup" || comp.settings.finals !== "none") return final?.result?.winner ?? null;
+  if (comp.kind === "cup" || comp.settings.playoffSpots > 0) return final?.result?.winner ?? null;
   return standings(comp)[0]?.teamId ?? null;
 }
 
@@ -545,7 +575,10 @@ export function parseCompetition(x: unknown): Competition | null {
   if (!config) return null;
   const s = x.settings;
   if (!isObj(s) || typeof s.strength !== "boolean" || (s.rounds !== 1 && s.rounds !== 2)) return null;
-  if (s.finals !== "none" && s.finals !== "final" && s.finals !== "semis") return null;
+  // Saved before playoff spots existed: finals "none", "final" (top 2) or "semis" (top 4).
+  const legacySpots: Record<string, number> = { none: 0, final: 2, semis: 4 };
+  const playoffSpots = s.playoffSpots === undefined && typeof s.finals === "string" ? legacySpots[s.finals] : s.playoffSpots;
+  if (!isInt(playoffSpots, 0, MAX_TEAMS) || playoffSpots === 1) return null;
   if (!isInt(s.pointsWin, 0, 100) || !isInt(s.pointsTie, 0, 100)) return null;
   const bestOf = s.bestOf === undefined ? 1 : s.bestOf;
   const finalBestOf = s.finalBestOf === undefined ? 1 : s.finalBestOf;
@@ -560,6 +593,7 @@ export function parseCompetition(x: unknown): Competition | null {
   }
   const ids = new Set(teams.map((t) => t.id));
   if (ids.size !== teams.length) return null;
+  if (playoffSpots > (x.kind === "league" ? teams.length : 0)) return null;
   if (!Array.isArray(x.byes) || !x.byes.every((b) => isStr(b, 100) && ids.has(b))) return null;
   let bracket: string[] | undefined;
   if (x.bracket !== undefined) {
@@ -595,7 +629,7 @@ export function parseCompetition(x: unknown): Competition | null {
   const comp: Competition = {
     version: 1, rulesVersion: x.rulesVersion as number, id: x.id, name: x.name, kind: x.kind,
     createdAt: x.createdAt, updatedAt: x.updatedAt, seed: x.seed, config,
-    settings: { strength: s.strength, rounds: s.rounds, finals: s.finals, pointsWin: s.pointsWin, pointsTie: s.pointsTie, bestOf: bestOf as BestOf, finalBestOf: finalBestOf as BestOf },
+    settings: { strength: s.strength, rounds: s.rounds, playoffSpots, pointsWin: s.pointsWin, pointsTie: s.pointsTie, bestOf: bestOf as BestOf, finalBestOf: finalBestOf as BestOf },
     teams, byes: x.byes as string[], fixtures,
   };
   if (bracket) comp.bracket = bracket;

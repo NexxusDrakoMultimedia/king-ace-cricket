@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Nexxus Drako Multimedia
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// Clicks through the built page's Competitions, Leagues, Ratings and Records screens, the
+// Clicks through the built page's Competitions, Ratings and Records screens, the
 // match scorecard and the broadcast, in a simulated browser. Like smoke.test.mjs it proves
 // the wiring works and escapes hostile names; it cannot judge how the page looks.
 import { test, before } from "node:test";
@@ -56,18 +56,24 @@ const noInjection = (w, root) => {
   }
 };
 
-async function newLeague(w, { kind = "league", gen = 6, name = "Test League", extra } = {}) {
+/** Browser storage holding `n` saved teams, with strengths 0 to 5 in turn. */
+const withTeams = (n) => ({
+  "kac:v1:teams": JSON.stringify(Array.from({ length: n }, (_, i) => ({ id: `t${i}`, name: `Side ${i + 1}`, players: [], strength: i % 6 }))),
+});
+
+/** Makes a competition from every saved team. */
+async function newLeague(w, { kind = "league", name = "Test League", extra } = {}) {
   await act(w, "comp-new");
   set(w, "compName", name);
   set(w, "compKind", kind);
-  set(w, "compGen", gen);
+  for (const box of $(w, "compMyTeams").querySelectorAll("input")) box.checked = true;
   extra?.();
   await submit(w, "compForm");
 }
 
 test("the tabs switch between sections", async () => {
   const w = await load();
-  for (const [view, panel] of [["comps", "viewComps"], ["systems", "viewSystems"], ["ratings", "viewRatings"], ["records", "viewRecords"], ["solo", "viewSolo"]]) {
+  for (const [view, panel] of [["comps", "viewComps"], ["ratings", "viewRatings"], ["records", "viewRecords"], ["solo", "viewSolo"]]) {
     await click(w, `.tab[data-view="${view}"]`);
     assert.equal($(w, panel).hidden, false, `${view} shown`);
     assert.equal(w.document.querySelector(".tab[aria-current]").dataset.view, view);
@@ -76,13 +82,15 @@ test("the tabs switch between sections", async () => {
   assert.match($(w, "viewSolo").textContent, /Play ball/);
   assert.match(w.document.querySelector("footer").textContent, /stolen lands of the Jagera and Turrbal peoples/);
   assert.match(w.document.querySelector("footer").textContent, /queer-run and queer-made/);
+  assert.equal(w.document.querySelector('.tab[data-view="systems"]'), null, "tiered league systems are gone");
 });
 
 test("a league can be created, played, and its scorecard and broadcast opened", async () => {
-  const w = await load();
+  const w = await load(withTeams(6));
   await click(w, '.tab[data-view="comps"]');
   assert.match($(w, "compRoot").textContent, /No competitions yet/);
-  await newLeague(w, { gen: 6 });
+  assert.equal($(w, "compGen"), null, "competitions no longer generate teams");
+  await newLeague(w);
   assert.match($(w, "compRoot").textContent, /Test League/);
   assert.equal(w.document.querySelectorAll("#compRoot table.tbl tbody tr").length, 6);
   assert.equal(w.document.querySelectorAll("#compRoot .fx li").length, 15);
@@ -105,6 +113,14 @@ test("a league can be created, played, and its scorecard and broadcast opened", 
   assert.equal($(w, "matchRoot").querySelectorAll(".sheet").length, 2);
   assert.match($(w, "matchRoot").textContent, /Player of the match/);
   assert.equal($(w, "matchRoot").querySelectorAll("table.bat tbody tr").length, 22);
+  // Both innings have a bowling card with the other side's bowlers, number 11 first.
+  const cards = [...$(w, "matchRoot").querySelectorAll("table.bowl")];
+  assert.equal(cards.length, 2);
+  for (const card of cards) {
+    const first = card.querySelector("tbody tr td").textContent;
+    assert.equal(first, "Player 11", "the bowling opens with number 11");
+  }
+  assert.match($(w, "matchRoot").textContent, /b Player (7|8|9|10|11)/, "wickets are credited to a bowler");
 
   // Broadcast: Pyra Drake is the lead commentator
   await act(w, "mv-switch", '[data-mode="watch"]');
@@ -128,10 +144,10 @@ test("a league can be created, played, and its scorecard and broadcast opened", 
 });
 
 test("an event has playoffs and best-of series, shown in the fixtures", async () => {
-  const w = await load();
+  const w = await load(withTeams(6));
   await click(w, '.tab[data-view="comps"]');
-  await newLeague(w, { kind: "event", gen: 6, name: "Grand Event" });
-  assert.equal($(w, "compFinals").value, "semis");
+  await newLeague(w, { kind: "event", name: "Grand Event" });
+  assert.equal($(w, "compPlayoffs").value, "4");
   assert.equal($(w, "compBestOf").value, "3");
   assert.equal($(w, "compFinalBestOf").value, "5");
   await act(w, "comp-all");
@@ -146,10 +162,29 @@ test("an event has playoffs and best-of series, shown in the fixtures", async ()
   assert.ok($(w, "matchRoot").querySelectorAll(".seriesbar button").length >= 2);
 });
 
-test("a cup takes any number of teams and names rounds Round of X", async () => {
-  const w = await load();
+test("an event takes any number of playoff spots: six of eight, with byes for the top two seeds", async () => {
+  const w = await load(withTeams(8));
   await click(w, '.tab[data-view="comps"]');
-  await newLeague(w, { kind: "cup", gen: 40, name: "Big Cup" });
+  await newLeague(w, { kind: "event", name: "Six Spot", extra: () => set(w, "compPlayoffs", 6) });
+  assert.match($(w, "compRoot").textContent, /top 6 to playoffs/);
+  assert.match($(w, "compRoot").textContent, /Seeds 1 to 2 get a bye/);
+  assert.equal(w.document.querySelectorAll("#compRoot tr.zone").length, 6, "the playoff places are marked");
+  await act(w, "comp-all");
+  const names = [...w.document.querySelectorAll("#compRoot .roundname")].map((h) => h.textContent);
+  assert.deepEqual(names.slice(-3), ["Quarter-final", "Semi-final", "Final"]);
+  const comp = JSON.parse(w.localStorage.getItem("kac:v1:competitions"))[0];
+  assert.equal(comp.fixtures.filter((f) => f.stage !== "league").length, 5, "six teams, five knockout games");
+  assert.equal(comp.byes.length, 2);
+  // A spot count bigger than the field is refused.
+  await act(w, "comp-back");
+  await newLeague(w, { kind: "event", extra: () => set(w, "compPlayoffs", 9) });
+  assert.match($(w, "compMsg").textContent, /between 2 and 8/);
+});
+
+test("a cup takes any number of teams and names rounds Round of X", async () => {
+  const w = await load(withTeams(40));
+  await click(w, '.tab[data-view="comps"]');
+  await newLeague(w, { kind: "cup", name: "Big Cup" });
   assert.match($(w, "compRoot").textContent, /Round of 64/);
   await act(w, "comp-all");
   const names = [...w.document.querySelectorAll("#compRoot .roundname")].map((h) => h.textContent);
@@ -158,60 +193,38 @@ test("a cup takes any number of teams and names rounds Round of X", async () => 
   assert.equal(w.document.querySelectorAll("#compRoot .fx li button[data-action='fx-card']").length, 39);
   // A league over 16 teams is refused with a clear message.
   await act(w, "comp-back");
-  await act(w, "comp-new");
-  set(w, "compKind", "league");
-  set(w, "compGen", 20);
-  await submit(w, "compForm");
+  await newLeague(w, { kind: "league" });
   assert.match($(w, "compMsg").textContent, /at most 16/);
+  // And one team isn't enough for anything.
+  await act(w, "comp-new");
+  $(w, "compMyTeams").querySelector("input").checked = true;
+  await submit(w, "compForm");
+  assert.match($(w, "compMsg").textContent, /at least two teams/);
 });
 
-test("a league system plays seasons with promotion and relegation, and seeds a cup", async () => {
-  const w = await load();
-  await click(w, '.tab[data-view="systems"]');
-  assert.match($(w, "sysRoot").textContent, /No league systems yet/);
-  await act(w, "sys-new");
-  set(w, "sysName", "Pyramid");
-  set(w, "sysTiers", 3);
-  set(w, "sysSize", 6);
-  set(w, "sysSpots", 1);
-  $(w, "sysPlayoffs").checked = true;
-  await submit(w, "sysForm");
-  assert.match($(w, "sysRoot").textContent, /Pyramid/);
-  assert.equal(w.document.querySelectorAll("#sysRoot .tabs2 button").length, 3);
-  assert.equal($(w, "sysRoot").querySelector('[data-action="sys-next"]').disabled, true, "season not finished yet");
-
-  await act(w, "sys-round");
-  await act(w, "sys-season");
-  assert.equal($(w, "sysRoot").querySelector('[data-action="sys-next"]').disabled, false);
-  assert.match($(w, "sysRoot").textContent, /Promotion and relegation playoffs/);
-  assert.ok(w.document.querySelector("#sysRoot tr.zone, #sysRoot tr.drop"), "promotion and relegation zones are marked");
-  await act(w, "sys-next");
-  assert.match($(w, "sysRoot").textContent, /Season 2/);
-  assert.equal(JSON.parse(w.localStorage.getItem("kac:v1:systems")).length, 1);
-  assert.equal(JSON.parse(w.localStorage.getItem("kac:v1:systems"))[0].seasons.length, 2);
-  await act(w, "sys-tier", '[data-tier="1"]');
-  assert.match($(w, "sysRoot").querySelector(".tabs2 [aria-current]").textContent, /Division 2/);
-
-  // Cup from this system: the dialog opens with the system chosen, as a cup.
-  await act(w, "sys-cup");
-  assert.equal($(w, "compKind").value, "cup");
-  assert.equal($(w, "compSys").selectedOptions[0].textContent, "Pyramid");
-  assert.equal($(w, "compSysTiers").querySelectorAll("input").length, 3);
-  set(w, "compSysTop", 2);
+test("a cup can be seeded by team strength: the strongest are kept apart and get the byes", async () => {
+  const w = await load(withTeams(6));
+  await click(w, '.tab[data-view="comps"]');
+  await act(w, "comp-new");
+  set(w, "compKind", "cup");
+  assert.equal($(w, "compSeedWrap").hidden, false);
+  assert.equal($(w, "compLeagueOpts").hidden, true);
+  for (const box of $(w, "compMyTeams").querySelectorAll("input")) box.checked = true;
+  set(w, "compSeeding", "strength");
   await submit(w, "compForm");
-  assert.match($(w, "compRoot").textContent, /Round of 8|Quarter-final/);
   const comp = JSON.parse(w.localStorage.getItem("kac:v1:competitions"))[0];
-  assert.equal(comp.teams.length, 6, "top 2 of each of 3 tiers");
-  assert.ok(comp.bracket, "seeded bracket");
-  noInjection(w, "sysRoot");
+  // Strengths are 0 to 5 for Side 1 to Side 6: Side 6 is seed 1 and Side 5 seed 2.
+  assert.deepEqual(comp.byes, ["t5", "t4"]);
+  assert.equal(comp.bracket[0], "t5");
+  assert.equal(comp.bracket[comp.bracket.length / 2], "t4", "seeds 1 and 2 are in different halves");
 });
 
 test("ratings and records fill in from the matches played", async () => {
-  const w = await load();
+  const w = await load(withTeams(4));
   await click(w, '.tab[data-view="ratings"]');
   assert.match($(w, "ratingsRoot").textContent, /No ratings yet/);
   await click(w, '.tab[data-view="comps"]');
-  await newLeague(w, { gen: 4, name: "Ratings League" });
+  await newLeague(w, { name: "Ratings League" });
   await act(w, "comp-all");
 
   await click(w, '.tab[data-view="ratings"]');
@@ -238,9 +251,9 @@ test("ratings and records fill in from the matches played", async () => {
 });
 
 test("competitions persist across a reload, and can be deleted", async () => {
-  const w1 = await load();
+  const w1 = await load(withTeams(4));
   await click(w1, '.tab[data-view="comps"]');
-  await newLeague(w1, { gen: 4, name: "Kept League" });
+  await newLeague(w1, { name: "Kept League" });
   await act(w1, "comp-all");
   const w2 = await load(dump(w1));
   await click(w2, '.tab[data-view="comps"]');
@@ -253,7 +266,7 @@ test("competitions persist across a reload, and can be deleted", async () => {
 });
 
 test("hostile team and player names are text everywhere in competitions and records", async () => {
-  const w = await load();
+  const w = await load(withTeams(3));
   await click(w, "#btnTeams");
   await click(w, "#teamNew");
   $(w, "teamName").value = '<img src=x onerror="window.pwned=1">';
@@ -266,8 +279,7 @@ test("hostile team and player names are text everywhere in competitions and reco
   await act(w, "comp-new");
   const box = [...$(w, "compMyTeams").querySelectorAll("input")].find((i) => i.parentElement.textContent.includes("<img"));
   assert.ok(box, "the hostile team is offered as plain text");
-  box.checked = true;
-  set(w, "compGen", 3);
+  for (const b of $(w, "compMyTeams").querySelectorAll("input")) b.checked = true;
   set(w, "compName", '<b onmouseover="window.pwned=4">Cup</b>');
   await submit(w, "compForm");
   await act(w, "comp-all");
@@ -285,9 +297,9 @@ test("hostile team and player names are text everywhere in competitions and reco
 });
 
 test("strength can be turned on per team and per competition", async () => {
-  const w = await load();
+  const w = await load(withTeams(4));
   await click(w, '.tab[data-view="comps"]');
-  await newLeague(w, { gen: 4, name: "Strong League", extra: () => { $(w, "compStrength").checked = true; } });
+  await newLeague(w, { name: "Strong League", extra: () => { $(w, "compStrength").checked = true; } });
   assert.match($(w, "compRoot").textContent, /strength on/);
   assert.ok([...w.document.querySelectorAll("#compRoot thead th")].some((th) => th.textContent === "Str"), "strength column shown");
   await click(w, "#btnTeams");

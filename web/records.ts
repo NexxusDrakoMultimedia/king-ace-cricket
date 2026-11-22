@@ -24,7 +24,7 @@ function loaded(): NonNullable<typeof cache> {
   if (!cache || cache.version !== data.version) {
     cache = {
       version: data.version,
-      profiles: buildProfiles(data.comps, data.systems),
+      profiles: buildProfiles(data.comps),
       ratings: new Map(computeRatings(everyCompetition()).map((r) => [r.teamId, r])),
     };
   }
@@ -32,7 +32,7 @@ function loaded(): NonNullable<typeof cache> {
 }
 
 const HONOUR_ICON: Record<Honour["kind"], IconName> = {
-  champion: "star", "runner-up": "flag", promoted: "arrow-right", relegated: "warning",
+  champion: "star", "runner-up": "flag",
   "top-scorer": "pen", "most-sixes": "play", "final-potm": "mic",
 };
 

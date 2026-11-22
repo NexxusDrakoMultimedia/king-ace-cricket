@@ -3,11 +3,9 @@
 
 import { parseCompetition } from "../src/competition.ts";
 import type { Competition } from "../src/competition.ts";
-import { allCompetitions, parseLeagueSystem } from "../src/leagueSystem.ts";
-import type { LeagueSystem } from "../src/leagueSystem.ts";
-import { makeTeam, parseMatch, parseTeam } from "../src/match.ts";
+import { parseMatch, parseTeam, starterTeams } from "../src/match.ts";
 import type { MatchRecord, Team } from "../src/match.ts";
-import { COMPETITIONS_KEY, KVStore, MATCHES_KEY, MemoryKV, SYSTEMS_KEY, TEAMS_KEY } from "../src/storage.ts";
+import { COMPETITIONS_KEY, KVStore, MATCHES_KEY, MemoryKV, TEAMS_KEY } from "../src/storage.ts";
 import type { KV } from "../src/storage.ts";
 
 /** Shared app state: the browser stores, everything loaded from them, and small helpers. */
@@ -33,12 +31,10 @@ export const { kv, persistent } = pickKV();
 export const matchStore = new KVStore<MatchRecord>(kv, MATCHES_KEY, parseMatch);
 export const teamStore = new KVStore<Team>(kv, TEAMS_KEY, parseTeam);
 export const compStore = new KVStore<Competition>(kv, COMPETITIONS_KEY, parseCompetition);
-export const systemStore = new KVStore<LeagueSystem>(kv, SYSTEMS_KEY, parseLeagueSystem);
 
 export const data = {
   teams: [] as Team[],
   comps: [] as Competition[],
-  systems: [] as LeagueSystem[],
   /** Bumped on every change, so views can tell when to redraw or recompute. */
   version: 0,
 };
@@ -48,12 +44,11 @@ const newest = <T extends { updatedAt: string }>(a: T, b: T): number => b.update
 export async function loadData(): Promise<void> {
   data.teams = await teamStore.list();
   if (data.teams.length === 0) {
-    const first = makeTeam("My XI", []);
-    await teamStore.save(first);
-    data.teams = [first];
+    // First visit: two ready-made sides, so a match can be played straight away.
+    for (const t of starterTeams()) await teamStore.save(t);
+    data.teams = await teamStore.list();
   }
   data.comps = (await compStore.list()).sort(newest);
-  data.systems = (await systemStore.list()).sort(newest);
   data.version++;
 }
 
@@ -71,34 +66,13 @@ export async function removeComp(id: string): Promise<void> {
   data.version++;
 }
 
-export async function saveSystem(s: LeagueSystem): Promise<void> {
-  await systemStore.save(s);
-  const i = data.systems.findIndex((x) => x.id === s.id);
-  if (i >= 0) data.systems[i] = s;
-  else data.systems.unshift(s);
-  data.version++;
-}
-
-export async function removeSystem(id: string): Promise<void> {
-  await systemStore.remove(id);
-  data.systems = data.systems.filter((s) => s.id !== id);
-  data.version++;
-}
-
-/** Every competition: standalone ones and those inside league systems. Ratings and records are built from these. */
+/** Every competition. Ratings and records are built from these. */
 export function everyCompetition(): Competition[] {
-  return [...data.comps, ...data.systems.flatMap(allCompetitions)];
+  return data.comps;
 }
 
 export function findCompetition(id: string): Competition | undefined {
-  return everyCompetition().find((c) => c.id === id);
-}
-
-/** Saves the competition wherever it lives: on its own, or as part of a league system. */
-export async function saveCompetitionAnywhere(c: Competition): Promise<void> {
-  const sys = data.systems.find((s) => allCompetitions(s).some((x) => x.id === c.id));
-  if (sys) await saveSystem(sys);
-  else await saveComp(c);
+  return data.comps.find((c) => c.id === id);
 }
 
 let toastTimer: number | undefined;
