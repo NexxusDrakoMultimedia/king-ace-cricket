@@ -81,7 +81,7 @@ export function lineChart(o: LineOptions): string {
 
   let grid = "";
   for (let v = yLo; v <= yHi + 1e-9; v += ys.step) {
-    grid += `<line class="grid" x1="${padL}" x2="${W - padR}" y1="${Y(v)}" y2="${Y(v)}"/><text class="ax" x="${padL - 6}" y="${Y(v) + 4}" text-anchor="end">${Math.round(v)}</text>`;
+    grid += `<line class="gline" x1="${padL}" x2="${W - padR}" y1="${Y(v)}" y2="${Y(v)}"/><text class="ax" x="${padL - 6}" y="${Y(v) + 4}" text-anchor="end">${Math.round(v)}</text>`;
   }
   const xTicks = niceScale(xMax, 8);
   const xStep = o.xStep ?? (o.intX ? Math.max(1, Math.ceil(xTicks.step)) : xTicks.step);
@@ -144,7 +144,7 @@ export function barChart(o: BarOptions): string {
   const bw = Math.max(2, Math.min(22, (slot * 0.8) / n));
   let grid = "";
   for (let v = 0; v <= ys.max + 1e-9; v += ys.step) {
-    grid += `<line class="grid" x1="${padL}" x2="${W - padR}" y1="${Y(v)}" y2="${Y(v)}"/><text class="ax" x="${padL - 6}" y="${Y(v) + 4}" text-anchor="end">${Math.round(v)}</text>`;
+    grid += `<line class="gline" x1="${padL}" x2="${W - padR}" y1="${Y(v)}" y2="${Y(v)}"/><text class="ax" x="${padL - 6}" y="${Y(v) + 4}" text-anchor="end">${Math.round(v)}</text>`;
   }
   const every = o.labelEvery ?? Math.max(1, Math.ceil(o.groups.length / 20));
   const bars = o.groups
@@ -157,7 +157,7 @@ export function barChart(o: BarOptions): string {
           const x = r1(x0 + si * bw);
           const wk = g.wickets?.[si] ?? 0;
           const dots = Array.from({ length: Math.min(wk, 4) }, (_, k) => `<circle class="mark" cx="${r1(x + bw / 2)}" cy="${Y(v) - 7 - k * 9}" r="3.5"/>`).join("");
-          return `<rect class="bar ${o.series[si]!.cls}" x="${x}" y="${Y(v)}" width="${r1(bw - 1)}" height="${Math.max(0, h)}"><title>${esc(`${o.series[si]!.label}, ${g.label}: ${v} run${v === 1 ? "" : "s"}${wk ? `, ${wk} wicket${wk === 1 ? "" : "s"}` : ""}`)}</title></rect>${dots}`;
+          return `<rect class="cbar ${o.series[si]!.cls}" x="${x}" y="${Y(v)}" width="${r1(bw - 1)}" height="${Math.max(0, h)}"><title>${esc(`${o.series[si]!.label}, ${g.label}: ${v} run${v === 1 ? "" : "s"}${wk ? `, ${wk} wicket${wk === 1 ? "" : "s"}` : ""}`)}</title></rect>${dots}`;
         })
         .join("");
       return rects + label;
@@ -205,7 +205,7 @@ export function hBars(o: { title: string; rows: HBarRow[]; baseline?: number; un
       const textX = diverging && r.value < base ? x - 4 : x + len + 4;
       const anchor = diverging && r.value < base ? "end" : "start";
       return `<text class="ax rowlabel" x="${padL - 8}" y="${y + 15}" text-anchor="end">${esc(truncate(r.label, 20))}</text>
-        <rect class="bar ${r.cls ?? "s1"}" x="${x}" y="${y + 3}" width="${Math.max(1, len)}" height="${rowH - 8}"><title>${esc(r.title ?? `${r.label}: ${r.text ?? r.value}`)}</title></rect>
+        <rect class="cbar ${r.cls ?? "s1"}" x="${x}" y="${y + 3}" width="${Math.max(1, len)}" height="${rowH - 8}"><title>${esc(r.title ?? `${r.label}: ${r.text ?? r.value}`)}</title></rect>
         <text class="ax val" x="${r1(textX)}" y="${y + 15}" text-anchor="${anchor}">${esc(r.text ?? String(r.value))}</text>`;
     })
     .join("");
@@ -260,7 +260,7 @@ export function chaseMap(title: string, points: { first: number; second: number;
   const Yp = (v: number): number => r1(size - pad - (v / top.max) * (size - pad - 14));
   let grid = "";
   for (let v = 0; v <= top.max + 1e-9; v += top.step) {
-    grid += `<line class="grid" x1="${pad}" x2="${size - 14}" y1="${Yp(v)}" y2="${Yp(v)}"/><text class="ax" x="${pad - 6}" y="${Yp(v) + 4}" text-anchor="end">${v}</text>
+    grid += `<line class="gline" x1="${pad}" x2="${size - 14}" y1="${Yp(v)}" y2="${Yp(v)}"/><text class="ax" x="${pad - 6}" y="${Yp(v) + 4}" text-anchor="end">${v}</text>
       <text class="ax" x="${P(v)}" y="${size - pad + 16}" text-anchor="middle">${v}</text>`;
   }
   const dots = points

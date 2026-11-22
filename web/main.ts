@@ -15,6 +15,7 @@ import { initCompetitions, regionOptions, renderCompetitions, handleCompAction }
 import { closeMatch, handleMatchAction, openMatch } from "./matchview.ts";
 import { handleRatingAction, renderRatings } from "./ratings.ts";
 import { handleRecordAction, initRecords, renderRecords } from "./records.ts";
+import { icon } from "./icons.ts";
 import { matchCharts } from "./insightview.ts";
 import { esc, renderScorebook, renderStage } from "./render.ts";
 import {
@@ -458,7 +459,8 @@ function wire(): void {
 
   document.addEventListener("click", async (e) => {
     const t = e.target as HTMLElement;
-    if (t.matches("[data-close]")) t.closest("dialog")?.close();
+    // A real click lands on the icon inside a button, so look up from the target.
+    t.closest("[data-close]")?.closest("dialog")?.close();
     const btn = t.closest<HTMLElement>("[data-action]");
     if (!btn) return;
     const action = btn.dataset.action ?? "";
@@ -500,6 +502,26 @@ function wire(): void {
   });
 }
 
+/**
+ * Every dialog gets a close button pinned to its top (the other Close buttons sit at the
+ * bottom of long, scrolling dialogs), and a click on the dimmed backdrop closes it. Escape
+ * already works.
+ */
+function initDialogs(): void {
+  for (const d of document.querySelectorAll("dialog")) {
+    const bar = document.createElement("div");
+    bar.className = "dialog-bar";
+    bar.innerHTML = `<button type="button" class="ghost" data-close aria-label="Close">${icon("close", 20)}</button>`;
+    d.prepend(bar);
+    d.addEventListener("click", (e) => {
+      if (e.target !== d) return; // a click inside the content never targets the dialog itself
+      const r = d.getBoundingClientRect();
+      const outside = e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+      if (outside) d.close();
+    });
+  }
+}
+
 async function init(): Promise<void> {
   $("appVersion").textContent = __APP_VERSION__;
   await loadData();
@@ -508,6 +530,7 @@ async function init(): Promise<void> {
   initAnalytics();
   initCompetitions();
   initRecords();
+  initDialogs();
   let lastId: string | null = null;
   try {
     lastId = kv.getItem(LAST_KEY);

@@ -286,7 +286,7 @@ ol.players { margin: 0; padding-left: var(--space-6); display: grid; gap: var(--
 .chart.fixed { width: auto; max-width: none; }
 .chart.square { max-width: 360px; }
 .chart text { fill: var(--ink-muted); font: 11px var(--font-sans); }
-.chart .grid { stroke: var(--line); stroke-opacity: 0.35; stroke-width: 1; }
+.chart .gline { stroke: var(--line); stroke-opacity: 0.35; stroke-width: 1; }
 .chart .axis { stroke: var(--line); stroke-width: 1; }
 .chart .ref { stroke: var(--ink-muted); stroke-width: 1; stroke-dasharray: 2 4; fill: none; }
 .chart text.ref { stroke: none; }
@@ -295,7 +295,7 @@ ol.players { margin: 0; padding-left: var(--space-6); display: grid; gap: var(--
 .chart .endlabel { font-weight: 600; }
 .chart .rowlabel { fill: var(--ink); }
 .chart .val { fill: var(--ink); font-weight: 600; }
-.line.s1, .bar.s1, .sw.s1 { stroke: var(--accent); }
+.line.s1, .cbar.s1, .sw.s1 { stroke: var(--accent); }
 .line.s2, .sw.s2 { stroke: var(--ink); }
 .line.s3, .sw.s3 { stroke: var(--accent); stroke-dasharray: 8 5; }
 .line.s4, .sw.s4 { stroke: var(--ink); stroke-dasharray: 8 5; }
@@ -303,9 +303,9 @@ ol.players { margin: 0; padding-left: var(--space-6); display: grid; gap: var(--
 .line.s6, .sw.s6 { stroke: var(--ink); stroke-dasharray: 2 5; }
 .chart .endlabel.s1, .chart .endlabel.s3, .chart .endlabel.s5 { fill: var(--accent); }
 .chart .endlabel.s2, .chart .endlabel.s4, .chart .endlabel.s6 { fill: var(--ink); }
-.bar.s1 { fill: var(--accent); stroke: none; }
-.bar.s2 { fill: var(--ink); fill-opacity: 0.7; stroke: none; }
-.bar.s3, .bar.s4, .bar.s5, .bar.s6 { fill: var(--ink-muted); stroke: none; }
+.cbar.s1 { fill: var(--accent); stroke: none; }
+.cbar.s2 { fill: var(--ink); fill-opacity: 0.7; stroke: none; }
+.cbar.s3, .cbar.s4, .cbar.s5, .cbar.s6 { fill: var(--ink-muted); stroke: none; }
 .legend { list-style: none; margin: var(--space-1) 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); font-size: 13px; color: var(--ink-muted); }
 .legend li { display: flex; align-items: center; gap: var(--space-2); }
 .sw { display: inline-block; width: 24px; height: 0; border-top: 3px solid; border-top-color: inherit; }
@@ -335,12 +335,12 @@ ol.players { margin: 0; padding-left: var(--space-6); display: grid; gap: var(--
 
 /* ---- the bracket ---- */
 .bracket { padding-bottom: var(--space-2); }
-.bracket .box { fill: var(--surface); stroke: var(--line); stroke-width: 1.5; }
+.bracket .tbox { fill: var(--surface); stroke: var(--line); stroke-width: 1.5; }
 .bracket .rowbg { fill: transparent; }
 .bracket .tie.open { cursor: pointer; }
-.bracket .tie.open:hover .box, .bracket .tie:focus-visible .box { stroke: var(--accent); stroke-width: 2.5; }
+.bracket .tie.open:hover .tbox, .bracket .tie:focus-visible .tbox { stroke: var(--accent); stroke-width: 2.5; }
 .bracket .tie:focus-visible { outline: none; }
-.bracket .split { stroke: var(--line); stroke-width: 1; }
+.bracket .tsplit { stroke: var(--line); stroke-width: 1; }
 .bracket .link { fill: none; stroke: var(--line); stroke-width: 1.5; }
 .bracket .roundhead { fill: var(--accent); font: 400 12px var(--font-display); text-transform: uppercase; letter-spacing: 0.06em; }
 .bracket .tname { fill: var(--ink); font: 600 12px var(--font-sans); }
@@ -350,7 +350,7 @@ ol.players { margin: 0; padding-left: var(--space-6); display: grid; gap: var(--
 .bracket .lost .tname, .bracket .lost .tscore { fill: var(--ink-muted); font-weight: 400; }
 .bracket .empty .tname { fill: var(--ink-muted); font-weight: 400; }
 .bracket .winbar { fill: var(--accent); }
-.bracket .bye .box { stroke-dasharray: 4 3; }
+.bracket .bye .tbox { stroke-dasharray: 4 3; }
 
 /* ---- match history ---- */
 .rchip { display: inline-block; min-width: 20px; text-align: center; font: 700 12px/18px var(--font-sans); border: 1.5px solid var(--line); border-radius: var(--radius-sm); }
@@ -366,3 +366,24 @@ ol.players { margin: 0; padding-left: var(--space-6); display: grid; gap: var(--
   .chart:not(.fixed):not(.square) { min-width: 560px; }
 }
 @media (max-width: 640px) { .ladder { grid-template-columns: repeat(10, minmax(0, 1fr)); } }
+
+/* ---- a close button pinned to the top of every dialog ---- */
+.dialog-bar { position: sticky; top: calc(-1 * var(--space-4)); z-index: 3; display: flex; justify-content: flex-end; margin: calc(-1 * var(--space-4)) calc(-1 * var(--space-6)) 0; padding: var(--space-2) var(--space-4) 0; height: 0; overflow: visible; }
+.dialog-bar button { background: var(--surface); border: 2px solid var(--accent); color: var(--accent); padding: var(--space-1); line-height: 0; position: relative; top: var(--space-2); }
+.dialog-bar button:hover { background: var(--maroon); color: var(--gold); }
+
+/* ---- the record books (leaderboards), after Wisden's Almanack ---- */
+.almanacks { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr)); gap: var(--space-4) var(--space-6); }
+.board { margin: 0 0 var(--space-4); min-width: 0; }
+.board figcaption { border-bottom: 2px solid var(--accent); padding-bottom: var(--space-1); margin-bottom: var(--space-1); }
+.board figcaption b { display: block; font: 400 15px/22px var(--font-display); text-transform: uppercase; letter-spacing: 0.03em; color: var(--accent); }
+.board figcaption small { display: block; }
+.almanack td.rank, .almanack th.rank { width: 36px; text-align: right; color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+.almanack tbody th.who { font: 600 14px/20px var(--font-sans); text-transform: none; letter-spacing: 0; color: var(--ink); text-align: left; }
+.almanack tbody th.who button { padding: 0; border: 0; text-align: left; text-transform: none; letter-spacing: 0; font: 600 14px/20px var(--font-sans); color: var(--ink); }
+.almanack tbody th.who button:hover { color: var(--accent); }
+.almanack tbody td:not(.num):not(.rank) { color: var(--ink-muted); }
+.almanack tbody tr:first-child .rank, .almanack tbody tr:first-child th.who button { color: var(--accent); }
+.almanack td small, .almanack th small { display: block; font-weight: 400; }
+.almanack td:not(.num):not(.rank) { min-width: 120px; }
+@media (max-width: 640px) { .almanack { min-width: 560px; } }

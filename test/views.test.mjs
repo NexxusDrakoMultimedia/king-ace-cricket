@@ -340,6 +340,10 @@ test("hostile team and player names are text everywhere in competitions and reco
   noInjection(w, "recordsRoot");
   await act(w, "rec-open", '[data-kind="teams"]');
   noInjection(w, "recordsRoot");
+  await act(w, "rec-back");
+  await act(w, "rec-tab", '[data-kind="leaderboards"]');
+  assert.ok($(w, "recordsRoot").querySelectorAll("table.almanack").length > 0);
+  noInjection(w, "recordsRoot");
   assert.equal(w.pwned, undefined);
 });
 
@@ -435,4 +439,70 @@ test("a solo innings draws its charts as it goes", async () => {
   assert.equal($(w, "charts").querySelector("svg"), null, "nothing before the first ball");
   await click(w, "#btnInnings");
   assert.ok($(w, "charts").querySelectorAll("svg.chart").length >= 3);
+});
+
+test("the Records leaderboards fill in, link to profiles, and Back returns to them", async () => {
+  const w = await load(withTeams(6));
+  await click(w, '.tab[data-view="records"]');
+  await act(w, "rec-tab", '[data-kind="leaderboards"]');
+  assert.match($(w, "recordsRoot").textContent, /record books are empty/);
+  await click(w, '.tab[data-view="comps"]');
+  await newLeague(w, { kind: "major", name: "Almanack Major" });
+  await act(w, "comp-all");
+  await click(w, '.tab[data-view="records"]');
+  await act(w, "rec-tab", '[data-kind="leaderboards"]');
+  const root = $(w, "recordsRoot");
+  for (const t of ["Roll of honour", "Most runs", "Highest scores", "Best strike rate", "Most wickets", "Best bowling in an innings", "Highest team totals", "Biggest wins by runs"]) {
+    assert.match(root.textContent, new RegExp(t), t);
+  }
+  assert.match(root.textContent, /Almanack Major/);
+  assert.equal(root.querySelector('.tabs2 [aria-current="true"]').textContent, "leaderboards");
+  const first = root.querySelector('table.almanack tbody th.who [data-action="rec-open"]');
+  first.dispatchEvent(new w.MouseEvent("click", { bubbles: true }));
+  await tick();
+  assert.equal($(w, "recordsRoot").querySelector("table.almanack"), null, "a profile opened");
+  await act(w, "rec-back");
+  assert.ok($(w, "recordsRoot").querySelector("table.almanack"), "Back returns to the leaderboards");
+  noInjection(w, "recordsRoot");
+});
+
+test("every dialog has a close button at the top, and a click on the backdrop closes it", async () => {
+  const w = await load(withTeams(4));
+  for (const d of w.document.querySelectorAll("dialog")) {
+    assert.ok(d.querySelector(":scope > .dialog-bar [data-close]"), `${d.id} has a close button up top`);
+  }
+  await click(w, '.tab[data-view="comps"]');
+  await newLeague(w, { kind: "cup", name: "Close Cup" });
+  await act(w, "comp-all");
+  await act(w, "fx-card");
+  const d = $(w, "matchDialog");
+  assert.equal(d.hasAttribute("open"), true);
+  await click(w, "#matchDialog .dialog-bar [data-close] svg"); // a real click lands on the icon, not the button
+  assert.equal(d.hasAttribute("open"), false, "the top button closes it");
+  await act(w, "fx-card");
+  assert.equal(d.hasAttribute("open"), true);
+  // jsdom has no layout, so give the dialog a box and click outside it.
+  d.getBoundingClientRect = () => ({ left: 100, right: 500, top: 100, bottom: 400, width: 400, height: 300 });
+  d.dispatchEvent(new w.MouseEvent("click", { bubbles: true, clientX: 10, clientY: 10 }));
+  assert.equal(d.hasAttribute("open"), false, "a click on the backdrop closes it");
+  await act(w, "fx-card");
+  d.dispatchEvent(new w.MouseEvent("click", { bubbles: true, clientX: 200, clientY: 200 }));
+  assert.equal(d.hasAttribute("open"), true, "a click inside the dialog leaves it open");
+});
+
+test("chart and bracket SVG never reuse a class name the rest of the stylesheet already styles", async () => {
+  const w = await load(withTeams(8));
+  await click(w, '.tab[data-view="comps"]');
+  await newLeague(w, { kind: "major", name: "Class Check" });
+  await act(w, "comp-all");
+  // These names style scorebook boxes, page grids, flex rows, layout splits and fixture results.
+  // On an SVG shape they would override its own size and position.
+  const taken = new Set(["box", "split", "grid", "bar", "res", "row", "list", "stat", "tag"]);
+  const used = new Set();
+  const scan = (root) => root.querySelectorAll("svg.chart *").forEach((el) => el.classList.forEach((c) => used.add(c)));
+  scan($(w, "compRoot"));
+  await act(w, "fx-card");
+  scan($(w, "matchRoot"));
+  assert.ok(used.has("tbox") || used.has("cbar"), "the charts were scanned");
+  for (const c of used) assert.ok(!taken.has(c), `.${c} is already styled elsewhere`);
 });
