@@ -6,7 +6,9 @@ The live site at `kac.nexxusdrako.au` is deployed from `master` as changes land,
 
 ## [Unreleased]
 
-First public release (planned as 0.1.0).
+## [0.1.0] - 2026-11-22
+
+First public release.
 
 ### Added
 - **Leaderboards** in Records, laid out like Wisden's Almanack: a roll of honour; batting (most runs, highest scores, best average, best and fastest strike rates, sixes, fours, fifties and hundreds, ducks, Player of the Match); bowling (most wickets, best figures, economy, maidens); and teams (highest and lowest totals, biggest and narrowest wins, titles, wins, win percentage). Ties share a place, averages and rates have fair qualifications, and every name links to its profile.
@@ -28,19 +30,7 @@ First public release (planned as 0.1.0).
 - **Elo and Glicko ratings**, and **profiles and honours** for every team, player and competition.
 - **Name generators** for teams ("City Mascot") and players across the major cricket-playing regions.
 - **Google Analytics and GameAnalytics**, only if configured at build time and only after a visitor consents, with a cookie banner, settings, Global Privacy Control support, and [PRIVACY.md](PRIVACY.md).
+- **Four competition formats**: League, Cup, Major and Worlds, each made from your own teams (generate them in Teams) or from earlier champions.
+- **The Nexxus Drako Multimedia design system**, with the Orbitron and Exo 2 fonts self-hosted so loading the page makes no request to Google.
+- **Open licences**: the code and web app are GPL-3.0-or-later and the rules are CC0. The copyright holder is Nexxus Drako Multimedia.
 - Project files: agent guide, contributing guide, code of conduct, security policy, contributors list, privacy page and release process.
-
-### Fixed
-- Dialogs, including the scorecard, have a tidy square close button pinned to the top (and close on a click outside them), so you no longer have to scroll to the bottom to close one.
-- Bracket boxes drew at the wrong height, because a class name clashed with the scorebook's styles. The charts and bracket use their own class names now.
-- `wrangler deploy` builds the site itself if the host's build command was left blank, instead of failing on a missing `dist/` folder.
-
-### Removed
-- Tiered league systems with promotion and relegation, and the Leagues tab. Files exported with systems in them still import, without the systems.
-- Generating teams inside the new competition dialog. Competitions are made from your own teams (generate those in Teams).
-
-### Changed
-- The four competition formats are League, Cup, Major (what was called an Event) and Worlds.
-- League playoffs are a number of spots instead of "final" or "semi-finals". Competitions saved with the old setting load as 2 or 4 spots and play on exactly as before.
-- The web app follows the Nexxus Drako Multimedia design system, with its Orbitron and Exo 2 fonts self-hosted so loading the page makes no request to Google.
-- Code and the web app are GPL-3.0-or-later; the rules stay CC0. The copyright holder is Nexxus Drako Multimedia.
