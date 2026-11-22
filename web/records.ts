@@ -1,12 +1,15 @@
 // SPDX-FileCopyrightText: 2026 Nexxus Drako Multimedia
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { matchHistory } from "../src/insights.ts";
+import type { HistoryEntry } from "../src/insights.ts";
 import { average, buildProfiles, strikeRate } from "../src/profiles.ts";
 import type { CompetitionRecord, Honour, PlayerRecord, Profiles, TeamRecord } from "../src/profiles.ts";
 import { computeRatings } from "../src/ratings.ts";
 import type { RatingRow } from "../src/ratings.ts";
 import { icon } from "./icons.ts";
 import type { IconName } from "./icons.ts";
+import { eloChart, matchHistoryTable } from "./insightview.ts";
 import { esc } from "./render.ts";
 import { $, data, everyCompetition } from "./state.ts";
 
@@ -18,7 +21,7 @@ interface Selected { kind: Tab; id: string }
 let tab: Tab = "teams";
 let selected: Selected | null = null;
 let query = "";
-let cache: { version: number; profiles: Profiles; ratings: Map<string, RatingRow> } | null = null;
+let cache: { version: number; profiles: Profiles; ratings: Map<string, RatingRow>; history: Map<string, HistoryEntry[]> } | null = null;
 
 function loaded(): NonNullable<typeof cache> {
   if (!cache || cache.version !== data.version) {
@@ -26,6 +29,7 @@ function loaded(): NonNullable<typeof cache> {
       version: data.version,
       profiles: buildProfiles(data.comps),
       ratings: new Map(computeRatings(everyCompetition()).map((r) => [r.teamId, r])),
+      history: matchHistory(everyCompetition()),
     };
   }
   return cache;
@@ -54,13 +58,15 @@ function playerRow(p: PlayerRecord): string {
     <td class="num">${s.fifties}</td><td class="num">${s.hundreds}</td><td class="num">${s.fours}</td><td class="num">${s.sixes}</td><td class="num">${s.potm}</td></tr>`;
 }
 
-function teamDetail(t: TeamRecord, ratings: Map<string, RatingRow>, p: Profiles): string {
+function teamDetail(t: TeamRecord, ratings: Map<string, RatingRow>, p: Profiles, history: HistoryEntry[]): string {
   const r = ratings.get(t.teamId);
   const squad = t.roster.map((k) => p.players.get(k)).filter((x): x is PlayerRecord => !!x);
   return `<p class="eyebrow"><span class="tag">strength ${t.strength}</span>${t.titles ? `<span class="tag">${t.titles} title${t.titles === 1 ? "" : "s"}</span>` : ""}</p><h2>${esc(t.name)}</h2>
     <div class="statgrid">${stat("Played", t.played)}${stat("Won", t.won)}${stat("Lost", t.lost)}${stat("Tied", t.tied)}${stat("Elo", r ? Math.round(r.elo) : "-")}${stat("Glicko", r ? Math.round(r.glicko) : "-")}${stat("Highest", t.highest)}${stat("Lowest", t.played ? t.lowest : "-")}</div>
     <p class="hint">Recent form: ${t.form.length ? esc(t.form.join(" ")) : "no matches yet"}</p>
+    <h3>Elo</h3>${eloChart(history) || `<p class="hint">The chart appears after this team's first match.</p>`}
     <h3>Honours</h3>${honours(t.honours)}
+    <h3>Match history</h3>${matchHistoryTable(history)}
     <h3>Squad</h3><div class="scroll"><table class="tbl"><thead><tr><th class="num">#</th><th>Player</th><th class="num">Inns</th><th class="num">Runs</th><th class="num">HS</th><th class="num">Avg</th><th class="num">SR</th><th class="num">50</th><th class="num">100</th><th class="num">4s</th><th class="num">6s</th><th class="num">POM</th></tr></thead><tbody>${squad.map(playerRow).join("")}</tbody></table></div>`;
 }
 
@@ -110,12 +116,12 @@ function listHtml(): string {
 
 export function renderRecords(): void {
   const root = $("recordsRoot");
-  const { profiles, ratings } = loaded();
+  const { profiles, ratings, history } = loaded();
   let detail = "";
   if (selected) {
     if (selected.kind === "teams") {
       const t = profiles.teams.get(selected.id);
-      if (t) detail = teamDetail(t, ratings, profiles);
+      if (t) detail = teamDetail(t, ratings, profiles, history.get(t.teamId) ?? []);
     } else if (selected.kind === "players") {
       const p = profiles.players.get(selected.id);
       if (p) detail = playerDetail(p);

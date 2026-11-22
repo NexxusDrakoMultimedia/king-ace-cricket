@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Nexxus Drako Multimedia
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { Competition } from "./competition.ts";
+import type { Competition, Fixture } from "./competition.ts";
 
 export const START_RATING = 1500;
 export const ELO_K = 32;
@@ -62,13 +62,28 @@ export interface RatingRow {
   tied: number;
 }
 
+/** One rated match, reported as it is worked through: the Elo of both teams before and after. */
+export interface RatedGame {
+  compId: string;
+  compName: string;
+  fixture: Fixture;
+  aId: string;
+  bId: string;
+  aName: string;
+  bName: string;
+  aBefore: number;
+  bBefore: number;
+  aAfter: number;
+  bAfter: number;
+}
+
 /**
  * Elo and Glicko ratings for every team, derived from all completed fixtures in
  * all competitions, oldest competition first. Elo updates match by match. A
  * Glicko rating period is one round of a competition. Because ratings are
  * recomputed from the results, deleting a competition removes its effect.
  */
-export function computeRatings(competitions: readonly Competition[]): RatingRow[] {
+export function computeRatings(competitions: readonly Competition[], onGame?: (g: RatedGame) => void): RatingRow[] {
   const book = new Map<string, RatingRow>();
   const row = (id: string, name: string): RatingRow => {
     let r = book.get(id);
@@ -103,7 +118,13 @@ export function computeRatings(competitions: readonly Competition[]): RatingRow[
         const ra = row(f.a, name(f.a));
         const rb = row(f.b, name(f.b));
         // Elo, match by match.
+        const aBefore = ra.elo;
+        const bBefore = rb.elo;
         [ra.elo, rb.elo] = eloUpdate(ra.elo, rb.elo, aScore);
+        onGame?.({
+          compId: comp.id, compName: comp.name, fixture: f, aId: f.a, bId: f.b, aName: ra.name, bName: rb.name,
+          aBefore, bBefore, aAfter: ra.elo, bAfter: rb.elo,
+        });
         ra.played++;
         rb.played++;
         if (aScore === 1) { ra.won++; rb.lost++; }
